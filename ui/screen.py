@@ -56,7 +56,7 @@ def draw_header(model_name="meta/llama-3.1-8b-instruct"):
     """Заголовок в стиле Claude Code."""
     clear_screen()
     lines = [
-        f"{BOLD}{WHITE}🚀 NVIDIA VIBE-CODING ENGINE{RESET}",
+        f"{BOLD}{WHITE}NVIDIA VIBE-CODING ENGINE{RESET}",
         f"{DIM}Model: {model_name}{RESET}",
         "",
         f"{DIM}Введи запрос или 'exit' для выхода{RESET}",
@@ -174,19 +174,54 @@ def stream_response(token_generator):
     return "".join(full_response)
 
 
-def show_apply_prompt():
-    """Спрашивает пользователя о применении изменений."""
-    w = get_width() - 4
-    print(f"  {DIM}{BOX_H * w}{RESET}")
-    answer = input(f"  {YELLOW}Применить изменения?{RESET} {DIM}[y/n]{RESET} ")
-    return answer.lower() == "y"
-
-
 def show_error(message):
     """Показать ошибку."""
-    print(f"\n  {RED}✖ Ошибка: {message}{RESET}\n")
+    print(f"\n  {RED}[x] Ошибка: {message}{RESET}\n")
 
 
 def show_success(message):
     """Показать успех."""
-    print(f"  {GREEN}✔ {message}{RESET}\n")
+    print(f"  {GREEN}[v] {message}{RESET}\n")
+
+
+# ── Вывод файловых операций ──────────────────────────────────
+
+_ACTION_STYLE = {
+    'create': (GREEN,  '+', 'Создан'),
+    'mkdir':  (CYAN,   'd', 'Папка'),
+    'edit':   (YELLOW, '~', 'Изменён'),
+    'delete': (RED,    '-', 'Удалён'),
+}
+
+
+def show_file_op(result):
+    """Показать результат одной файловой операции."""
+    color, icon, label = _ACTION_STYLE.get(
+        result.action, (WHITE, '?', result.action)
+    )
+    if result.success:
+        print(f"  {color}[{icon}] {label}: {result.path}{RESET}")
+    else:
+        print(f"  {RED}[x] {label}: {result.path} -- {result.message}{RESET}")
+
+
+def show_ops_summary(results):
+    """Показать сводку всех файловых операций."""
+    if not results:
+        return
+
+    w = get_width() - 4
+    print(f"  {DIM}{BOX_H * w}{RESET}")
+
+    for r in results:
+        show_file_op(r)
+
+    ok = sum(1 for r in results if r.success)
+    fail = len(results) - ok
+    parts = []
+    if ok:
+        parts.append(f"{GREEN}{ok} ok{RESET}")
+    if fail:
+        parts.append(f"{RED}{fail} failed{RESET}")
+    print(f"  {DIM}{BOX_H * w}{RESET}")
+    print(f"  {', '.join(parts)}")
