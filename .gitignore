@@ -1,0 +1,8 @@
+# Скрываем API-ключи и конфиги
+core/llm_client.py
+.env
+# Скрываем системные файлы Python
+__pycache__/
+*.pyc
+# Скрываем логи
+history.log
