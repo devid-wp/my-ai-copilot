@@ -13,6 +13,7 @@
 import os
 import re
 import shutil
+from core.security import ensure_path_safe, ensure_command_safe
 
 
 class FileOperation:
@@ -70,7 +71,7 @@ def _resolve_path(raw_path, project_root):
 
 def parse_operations(text):
     """
-    Парсит ответ модели и извлекает файловые операции.
+    Парсит ответ модели и извлекает файловые операции и команды.
     Возвращает список FileOperation.
     """
     operations = []
@@ -120,6 +121,13 @@ def parse_operations(text):
     ):
         operations.append(FileOperation('delete', m.group(1).strip()))
 
+    # 5) EXECUTE (одна строка)
+    for m in re.finditer(
+        r'^\[EXECUTE:\s*(.+?)\]\s*$',
+        text, re.MULTILINE
+    ):
+        operations.append(FileOperation('execute', m.group(1).strip()))
+
     return operations
 
 
@@ -127,7 +135,7 @@ def parse_operations(text):
 
 def execute_operations(operations, project_root):
     """
-    Выполняет файловые операции на диске.
+    Выполняет файловые операции на диске и системные команды.
     Возвращает список OperationResult.
     """
     results = []
@@ -135,6 +143,11 @@ def execute_operations(operations, project_root):
 
     for op in operations:
         try:
+            if op.action == 'execute':
+                ensure_command_safe(op.path)
+                _do_execute(op.path, op, results, project_root)
+                continue
+
             display, full_path = _resolve_path(op.path, project_root)
 
             if full_path is None:
@@ -142,6 +155,8 @@ def execute_operations(operations, project_root):
                     op.action, op.path, False, "Empty or invalid path"
                 ))
                 continue
+
+            ensure_path_safe(full_path, project_root)
 
             # Используем display path в результатах (короче для относительных)
             op.path = display
@@ -257,3 +272,31 @@ def _do_delete(full_path, op, results):
         results.append(OperationResult('delete', op.path, True))
     else:
         results.append(OperationResult('delete', op.path, False, "Not found"))
+
+
+def _do_execute(command, op, results, project_root):
+    """Выполнить системную команду."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            timeout=30
+        )
+        output = ""
+        if result.stdout:
+            output += f"STDOUT:\n{result.stdout}\n"
+        if result.stderr:
+            output += f"STDERR:\n{result.stderr}\n"
+        if not output:
+            output = "Команда выполнена успешно, вывода нет."
+        
+        msg = f"Код возврата: {result.returncode}\n{output}"
+        results.append(OperationResult('execute', command, True, msg))
+    except subprocess.TimeoutExpired:
+        results.append(OperationResult('execute', command, False, "Ошибка: Превышен таймаут выполнения команды (30 секунд)."))
+    except Exception as e:
+        results.append(OperationResult('execute', command, False, f"Ошибка при выполнении команды: {str(e)}"))

@@ -130,53 +130,66 @@ def _bottom_toolbar():
     )
 
 
-# Единственный PromptSession на весь сеанс (хранит историю)
-_session = PromptSession(
-    style=_PT_STYLE,
-    key_bindings=_make_keybindings(),
-    multiline=True,
-    bottom_toolbar=_bottom_toolbar,
-    prompt_continuation=lambda width, line, is_soft_wrap: "  " + f"{BOX_V} " ,
-)
+def _create_prompt_session():
+    """Create a PromptSession if possible, otherwise return None for fallback."""
+    try:
+        from prompt_toolkit.output.win32 import NoConsoleScreenBufferError
+    except Exception:
+        NoConsoleScreenBufferError = Exception
+    try:
+        return PromptSession(
+            style=_PT_STYLE,
+            key_bindings=_make_keybindings(),
+            multiline=True,
+            bottom_toolbar=_bottom_toolbar,
+            prompt_continuation=lambda width, line, is_soft_wrap: "  " + f"{BOX_V} ",
+        )
+    except NoConsoleScreenBufferError:
+        return None
+    except Exception:
+        return None
+
+# Initialize the session (may be None if console unavailable)
+_session = _create_prompt_session()
 
 
 def draw_prompt():
-    """
-    Инпут-бар с рамкой и поддержкой многострочного ввода.
+    """Input bar with frame and multiline support.
 
-    Рисует рамку вокруг инпута, поддерживает многострочный ввод.
-    Возвращает введённый текст (stripped).
-
-    Управление:
-      Enter         — отправить
-      Alt+Enter     — новая строка
+    Falls back to built‑in input() when PromptSession cannot be used (e.g., missing console).
     """
     w = get_width()
 
-    # ── Верхняя граница рамки с заголовком Ask Copilot ──
+    # Top border with title
     title = " Ask Copilot "
     title_len = len(title)
-    bar_len = max(1, w - 2 - title_len - 1)  # 1 для левого BOX_H перед заголовком
+    bar_len = max(1, w - 2 - title_len - 1)
     top_border = f"{CYAN}{BOX_TL}{BOX_H}{RESET}{BOLD}{WHITE}{title}{RESET}{CYAN}{BOX_H * bar_len}{BOX_TR}{RESET}\n"
-    
     sys.stdout.write(f"\n{top_border}")
     sys.stdout.write(f"{CYAN}{BOX_V}{RESET} ")
     sys.stdout.flush()
 
-    # ── Prompt toolkit session ──
-    try:
-        result = _session.prompt(
-            "",                          # левая часть первой строки — уже нарисована
-            prompt_continuation=lambda w, ln, sw: f"{CYAN}{BOX_V}{RESET} ",
-            placeholder="Ask Copilot... (Alt+Enter for newline)"
-        )
-    except (EOFError, KeyboardInterrupt):
-        # Закрываем рамку перед выбросом
-        sys.stdout.write(f"\n{CYAN}{BOX_BL}{BOX_H * (w - 2)}{BOX_BR}{RESET}\n\n")
-        sys.stdout.flush()
-        raise KeyboardInterrupt
+    # If PromptSession could not be created, use simple input fallback
+    if _session is None:
+        try:
+            result = input("\n> ")
+        except (EOFError, KeyboardInterrupt):
+            sys.stdout.write(f"\n{CYAN}{BOX_BL}{BOX_H * (w - 2)}{BOX_BR}{RESET}\n\n")
+            sys.stdout.flush()
+            raise KeyboardInterrupt
+    else:
+        try:
+            result = _session.prompt(
+                "",
+                prompt_continuation=lambda w, ln, sw: f"{CYAN}{BOX_V}{RESET} ",
+                placeholder="Ask Copilot... (Alt+Enter for newline)",
+            )
+        except (EOFError, KeyboardInterrupt):
+            sys.stdout.write(f"\n{CYAN}{BOX_BL}{BOX_H * (w - 2)}{BOX_BR}{RESET}\n\n")
+            sys.stdout.flush()
+            raise KeyboardInterrupt
 
-    # ── Нижняя граница рамки ──
+    # Bottom border
     sys.stdout.write(f"{CYAN}{BOX_BL}{BOX_H * (w - 2)}{BOX_BR}{RESET}\n\n")
     sys.stdout.flush()
 
@@ -280,6 +293,15 @@ def show_success(message):
     """Показать успех."""
     print(f"  {GREEN}[v] {message}{RESET}\n")
 
+# ── Статус выполнения инструмента ────────────────────────────────────────
+
+def show_tool_status(action: str, path: str = ""):
+    """Отображает текущий статус выполнения инструмента.
+    Пример: "⏳ Выполняю: create_file для src/main.py"
+    """
+    status_msg = f"⏳ Выполняю: {action}" + (f" для {path}" if path else "")
+    print(f"  {YELLOW}{status_msg}{RESET}")
+
 
 # ── Вывод файловых операций ──────────────────────────────────
 
@@ -288,16 +310,22 @@ _ACTION_STYLE = {
     'mkdir':  (CYAN,   'd', 'Папка'),
     'edit':   (YELLOW, '~', 'Изменён'),
     'delete': (RED,    '-', 'Удалён'),
+    'execute':(CYAN,   '>', 'Запуск'),
 }
 
 
 def show_file_op(result):
-    """Показать результат одной файловой операции."""
+    """Показать результат одной файловой операции или команды."""
     color, icon, label = _ACTION_STYLE.get(
         result.action, (WHITE, '?', result.action)
     )
     if result.success:
         print(f"  {color}[{icon}] {label}: {result.path}{RESET}")
+        if result.action == 'execute' and result.message:
+            # Выводим результат работы команды тусклым цветом со сдвигом
+            lines = result.message.strip().splitlines()
+            for line in lines:
+                print(f"      {DIM}{line}{RESET}")
     else:
         print(f"  {RED}[x] {label}: {result.path} -- {result.message}{RESET}")
 
