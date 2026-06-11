@@ -63,7 +63,7 @@ def edit_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
     patches: List[Dict[str, Any]] = args["patches"]
     abs_path = ensure_path_safe(os.path.join(project_root, rel_path), project_root)
     if not abs_path.is_file():
-        raise FileNotFoundError(f"File '{rel_path}' does not exist.")
+        raise FileNotFoundError(f"Файл '{rel_path}' не существует.")
     lines = abs_path.read_text(encoding="utf-8").splitlines(keepends=True)
     for patch in sorted(patches, key=lambda p: p["start_line"]):
         start = patch["start_line"] - 1
@@ -83,7 +83,7 @@ def delete_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
         get_logger(project_root).info("delete_file %s", rel_path)
         return {"result": "deleted", "path": rel_path}
     else:
-        raise FileNotFoundError(f"File '{rel_path}' not found.")
+        raise FileNotFoundError(f"Файл '{rel_path}' не найден.")
 
 
 def make_directory(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
@@ -127,7 +127,7 @@ def read_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
     rel_path = args["path"]
     abs_path = ensure_path_safe(os.path.join(project_root, rel_path), project_root)
     if not abs_path.is_file():
-        raise FileNotFoundError(f"File '{rel_path}' not found.")
+        raise FileNotFoundError(f"Файл '{rel_path}' не найден.")
     content = _read_file(abs_path)
     get_logger(project_root).info("read_file %s", rel_path)
     return {"result": "read", "path": rel_path, "content": content}
@@ -155,7 +155,7 @@ def dispatch_function(name: str, args: Dict[str, Any], project_root: str) -> Dic
 
     func = FUNCTION_MAP.get(name)
     if func is None:
-        raise ValueError(f"Unsupported function '{name}'.")
+        raise ValueError(f"Неподдерживаемая функция '{name}'.")
 
     # Show human-readable status: ⏳ Выполняю: create_file для src/main.py
     path_hint = args.get("path") or args.get("command") or ""

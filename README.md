@@ -55,7 +55,8 @@ pip install -r requirements.txt
 Создай файл `.env` в корне проекта:
 ```env
 NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxx
-NVIDIA_MODEL=meta/llama-3.1-8b-instruct
+NVIDIA_MODEL=meta/llama-3.3-70b-instruct
+# NVIDIA_MODEL=mistralai/mistral-large-latest
 ```
 
 > 🔑 Ключ бесплатно получаешь на [build.nvidia.com](https://build.nvidia.com) → Sign In → Get API Key
@@ -81,6 +82,7 @@ python main.py --project D:\мой-проект
 |------|----------|--------------|
 | `--project` / `-p` | Папка проекта | Текущая директория |
 | `--agent` | Включить агентный режим | Выключен |
+| `--model` / `-m` | Модель NVIDIA LLM | Значение `NVIDIA_MODEL` из `.env` (по умолчанию `meta/llama-3.3-70b-instruct`) |
 
 ---
 

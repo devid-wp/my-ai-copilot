@@ -39,7 +39,8 @@ if exist .env (
     set /p API_KEY="  Введи NVIDIA API Key (nvapi-...): "
     (
         echo NVIDIA_API_KEY=!API_KEY!
-        echo NVIDIA_MODEL=meta/llama-3.1-8b-instruct
+        echo NVIDIA_MODEL_CHAT=meta/llama-3.1-8b-instruct
+        echo NVIDIA_MODEL_CODE=meta/llama-3.3-70b-instruct
     ) > .env
     echo         .env создан успешно
 )

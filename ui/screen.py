@@ -61,12 +61,12 @@ def draw_box(lines, color=CYAN, padding=2):
     print(f"{color}{BOX_BL}{BOX_H * w}{BOX_BR}{RESET}")
 
 
-def draw_header(model_name="meta/llama-3.1-8b-instruct"):
+def draw_header(model_name="meta/llama-3.3-70b-instruct"):
     """Заголовок терминала."""
     clear_screen()
     lines = [
-        f"{BOLD}{WHITE}NVIDIA VIBE-CODING ENGINE{RESET}",
-        f"{DIM}Model: {model_name}{RESET}",
+        f"{BOLD}{WHITE}NVIDIA ДВИЖОК КОДИРОВАНИЯ{RESET}",
+        f"{DIM}Модель: {model_name}{RESET}",
         "",
         f"{DIM}Enter — отправить  |  Alt+Enter — новая строка  |  'exit' — выход{RESET}",
     ]
@@ -161,7 +161,7 @@ def draw_prompt():
     w = get_width()
 
     # Top border with title
-    title = " Ask Copilot "
+    title = " Задать вопрос Копилоту "
     title_len = len(title)
     bar_len = max(1, w - 2 - title_len - 1)
     top_border = f"{CYAN}{BOX_TL}{BOX_H}{RESET}{BOLD}{WHITE}{title}{RESET}{CYAN}{BOX_H * bar_len}{BOX_TR}{RESET}\n"
@@ -182,7 +182,7 @@ def draw_prompt():
             result = _session.prompt(
                 "",
                 prompt_continuation=lambda w, ln, sw: f"{CYAN}{BOX_V}{RESET} ",
-                placeholder="Ask Copilot... (Alt+Enter for newline)",
+                placeholder="Задай вопрос Копилоту... (Alt+Enter для новой строки)",
             )
         except (EOFError, KeyboardInterrupt):
             sys.stdout.write(f"\n{CYAN}{BOX_BL}{BOX_H * (w - 2)}{BOX_BR}{RESET}\n\n")

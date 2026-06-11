@@ -34,7 +34,7 @@ def test_execute_create_file_traversal_blocked(tmp_project):
     results = execute_operations([op], tmp_project)
     assert len(results) == 1
     assert results[0].success is False
-    assert "denied" in results[0].message
+    assert "запрещен" in results[0].message
     assert not os.path.exists(os.path.join(tmp_project, '..', 'unsafe.py'))
 
 def test_execute_cmd_allowed(tmp_project):
@@ -49,4 +49,4 @@ def test_execute_cmd_blocked(tmp_project):
     results = execute_operations([op], tmp_project)
     assert len(results) == 1
     assert results[0].success is False
-    assert "not allowed" in results[0].message
+    assert "не разрешена" in results[0].message

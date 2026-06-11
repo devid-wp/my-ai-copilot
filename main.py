@@ -17,6 +17,7 @@ from core.llm_client import NVIDIAClient
 from core.agent_executor import dispatch_function
 from core.context_manager import get_project_context
 from core.file_ops import parse_operations, execute_operations
+from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from ui.screen import (
     draw_header, draw_prompt, draw_separator,
     update_status, stream_response, show_ops_summary,
@@ -28,7 +29,8 @@ load_dotenv()
 
 # API ключ из .env или захардкоженный
 API_KEY = os.getenv("NVIDIA_API_KEY", "nvapi-...")
-MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
+MODEL_CHAT = os.getenv("NVIDIA_MODEL_CHAT", "meta/llama-3.1-8b-instruct")
+MODEL_CODE = os.getenv("NVIDIA_MODEL_CODE", "meta/llama-3.3-70b-instruct")
 
 
 def _get_system_info(project_root):
@@ -46,7 +48,7 @@ def _get_system_info(project_root):
 
 
 def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str):
-    """Autonomous agent loop: up to 15 iterations.
+    """Autonomous agent loop: up to 40 iterations.
 
     Each iteration:
     1. Calls the model (streaming).
@@ -54,19 +56,46 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
     3. If legacy file-ops text returned → execute and feed results back.
     4. If no actions at all → agent is done, break.
     """
-    current_prompt = initial_prompt
+    from core.memory import AgentMemory
+    session_file = os.path.join(project_root, "logs", "session.json")
+    memory = AgentMemory(session_file)
 
-    for iteration in range(1, 16):
-        update_status(f"Агент — шаг {iteration}/15...")
-        system_info = _get_system_info(project_root)
+    # Append user prompt to memory
+    memory.add("user", initial_prompt)
+
+    MAX_ITERATIONS = 40
+    iteration = 1
+    no_action_streak = 0
+
+    while iteration <= MAX_ITERATIONS:
+        update_status(f"Агент — шаг {iteration}/{MAX_ITERATIONS}...")
+        selected_model = client.select_model(initial_prompt)
+        if selected_model == client.model_code:
+            print("  🧠 Модель кода")
+        else:
+            print("  💬 Модель чата")
         project_ctx = get_project_context(project_root)
-        context = system_info + "\n" + project_ctx
+        
+        # Build system prompt from template
+        client.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+            project_root=project_root,
+            project_tree=project_ctx
+        )
 
-        spinner = Spinner(f"Генерация (шаг {iteration}/15)...")
+        # Ensure system message is the first message in memory
+        if memory.history and memory.history[0].get("role") == "system":
+            memory.history[0]["content"] = client.system_prompt
+            memory._save()
+        else:
+            memory.history.insert(0, {"role": "system", "content": client.system_prompt})
+            memory._save()
+
+        spinner = Spinner(f"Генерация (шаг {iteration}/{MAX_ITERATIONS})...")
         spinner.start()
 
         try:
-            token_gen = client.ask_stream(current_prompt, context)
+            # Pass memory.get_history() as messages to ask_stream
+            token_gen = client.ask_stream("", messages=memory.get_history())
 
             # Получаем первый токен, чтобы остановить спиннер
             try:
@@ -97,9 +126,24 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
             show_error(str(e))
             break
 
+        # Check for TASK COMPLETE
+        has_task_complete = "ЗАДАЧА ВЫПОЛНЕНА:" in full_response
+
         # ── 1. Обрабатываем native tool_calls ───────────────────────────
         tool_calls = client.get_last_tool_calls()
+        
+        # ── 2. Legacy текстовые операции [CREATE_FILE: …] ───────────────
+        operations = parse_operations(full_response)
+        
+        if tool_calls or operations:
+            no_action_streak = 0
+        else:
+            no_action_streak += 1
+
         if tool_calls:
+            # Сохраняем ответ ассистента с вызовами инструментов
+            memory.add("assistant", full_response, tool_calls=tool_calls)
+            
             tool_results = []
             for tc in tool_calls:
                 func_name = tc["function"]["name"]
@@ -110,20 +154,30 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
                     args = {}
                 result = dispatch_function(func_name, args, project_root)
                 tool_results.append(f"[{func_name}] → {json.dumps(result, ensure_ascii=False)}")
-                # Возвращаем результат в историю
-                client.history.append({
-                    "role": "tool",
-                    "tool_call_id": tc.get("id", "call_0"),
-                    "name": func_name,
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
-            current_prompt = "Tool results:\n" + "\n".join(tool_results)
+                
+                # Добавляем результат работы инструмента в память
+                memory.add(
+                    "tool",
+                    json.dumps(result, ensure_ascii=False),
+                    tool_call_id=tc.get("id", "call_0"),
+                    name=func_name
+                )
+            
+            memory.trim(50)
+            
+            if has_task_complete:
+                summary = full_response.split("ЗАДАЧА ВЫПОЛНЕНА:", 1)[1].strip()
+                show_success(f"ЗАДАЧА ВЫПОЛНЕНА: {summary}")
+                break
+                
+            iteration += 1
             draw_separator()
             continue
 
-        # ── 2. Legacy текстовые операции [CREATE_FILE: …] ───────────────
-        operations = parse_operations(full_response)
         if operations:
+            # Сохраняем текстовый ответ ассистента
+            memory.add("assistant", full_response)
+            
             results = execute_operations(operations, project_root)
             show_ops_summary(results)
             feedback = []
@@ -133,13 +187,37 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
                     feedback.append(f"Команда '{r.path}': {status}\n{r.message}")
                 else:
                     feedback.append(f"Операция {r.action} над {r.path}: {status}")
-            current_prompt = "Результаты выполнения операций:\n" + "\n".join(feedback)
+            
+            user_feedback = "Результаты выполнения операций:\n" + "\n".join(feedback)
+            # Добавляем фидбэк в память как сообщение от пользователя
+            memory.add("user", user_feedback)
+            
+            memory.trim(50)
+            
+            if has_task_complete:
+                summary = full_response.split("ЗАДАЧА ВЫПОЛНЕНА:", 1)[1].strip()
+                show_success(f"ЗАДАЧА ВЫПОЛНЕНА: {summary}")
+                break
+                
+            iteration += 1
             draw_separator()
             continue
 
         # ── 3. Нет ни tool_calls, ни операций — задача выполнена ────────
-        show_success("Агент завершил задачу.")
-        break
+        memory.add("assistant", full_response)
+        memory.trim(50)
+
+        if has_task_complete:
+            summary = full_response.split("ЗАДАЧА ВЫПОЛНЕНА:", 1)[1].strip()
+            show_success(f"ЗАДАЧА ВЫПОЛНЕНА: {summary}")
+            break
+
+        if no_action_streak >= 2:
+            show_success("Агент завершил задачу (нет действий 2 шага подряд).")
+            break
+
+        iteration += 1
+        draw_separator()
 
     draw_separator()
 
@@ -155,6 +233,11 @@ def main():
         "--agent", action="store_true",
         help="Включить агентный режим (autonomous tool-calling loop)",
     )
+    parser.add_argument(
+        "--model", "-m",
+        default=None,
+        help="Модель NVIDIA LLM (перезаписывает NVIDIA_MODEL из .env)",
+    )
     args = parser.parse_args()
 
     project_root = os.path.abspath(args.project)
@@ -163,9 +246,27 @@ def main():
         print(f"Папка проекта не найдена: {project_root}")
         sys.exit(1)
 
-    client = NVIDIAClient(API_KEY, model=MODEL)
+    if args.model:
+        selected_model_chat = args.model
+        selected_model_code = args.model
+    else:
+        selected_model_chat = MODEL_CHAT
+        selected_model_code = MODEL_CODE
+
+    project_ctx = get_project_context(project_root)
+    initial_system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        project_root=project_root,
+        project_tree=project_ctx
+    )
+    client = NVIDIAClient(
+        API_KEY,
+        system_prompt=initial_system_prompt,
+        model_chat=selected_model_chat,
+        model_code=selected_model_code
+    )
     mode_label = "AGENT" if args.agent else "CHAT"
-    draw_header(model_name=f"{MODEL}  [{mode_label}]")
+    model_display = args.model if args.model else f"{selected_model_chat} & {selected_model_code}"
+    draw_header(model_name=f"{model_display}  [{mode_label}]")
     update_status(f"Проект: {project_root}")
     if args.agent:
         update_status("Режим: АГЕНТ  (до 15 итераций, tool-calling включён)")
@@ -181,6 +282,15 @@ def main():
             print("\n  До встречи!\n")
             break
 
+        if prompt.strip() == "!clear":
+            from core.memory import AgentMemory
+            session_file = os.path.join(project_root, "logs", "session.json")
+            memory = AgentMemory(session_file)
+            memory.clear()
+            client.reset_history()
+            show_success("История диалога и сессия очищены.")
+            continue
+
         if not prompt.strip():
             continue
 
@@ -188,9 +298,19 @@ def main():
             run_agent_loop(client, prompt, project_root)
         else:
             # ── Обычный режим (один запрос, стриминг) ───────────────────
+            selected_model = client.select_model(prompt)
+            if selected_model == client.model_code:
+                print("  🧠 Модель кода")
+            else:
+                print("  💬 Модель чата")
+
             system_info = _get_system_info(project_root)
             project_ctx = get_project_context(project_root)
             context = system_info + "\n" + project_ctx
+            client.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+                project_root=project_root,
+                project_tree=project_ctx
+            )
 
             spinner = Spinner("Генерация ответа...")
             spinner.start()

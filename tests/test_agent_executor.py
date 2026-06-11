@@ -133,5 +133,5 @@ class TestExecuteCmd:
 
 class TestUnsupportedFunction:
     def test_raises_for_unknown(self, tmp_project):
-        with pytest.raises(ValueError, match="Unsupported"):
+        with pytest.raises(ValueError, match="Неподдерживаемая"):
             dispatch_function("hack_system", {}, tmp_project)
