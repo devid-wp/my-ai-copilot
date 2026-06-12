@@ -136,3 +136,27 @@ def get_project_context(project_root):
         parts.extend(file_sections)
 
     return '\n'.join(parts)
+
+
+def get_git_log(project_root: str) -> str:
+    """Run ``git log --oneline -15`` in project_root and return the output.
+
+    Returns an empty string if the directory is not a git repository or if
+    git is not installed, so callers can safely embed the result in prompts.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", "-15"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        return ""
+    except Exception:
+        return ""
+

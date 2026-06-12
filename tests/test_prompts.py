@@ -11,7 +11,10 @@ from core.llm_client import NVIDIAClient
 def test_system_prompt_template_placeholders():
     formatted = SYSTEM_PROMPT_TEMPLATE.format(
         project_root="/test/root",
-        project_tree="file.py\nmain.py"
+        project_tree="file.py\nmain.py",
+        current_user="testdev",
+        team_activity="— нет данных —",
+        git_log="abc1234 Initial commit",
     )
     assert "/test/root" in formatted
     assert "file.py" in formatted
@@ -19,6 +22,9 @@ def test_system_prompt_template_placeholders():
     assert "ЗАДАЧА ВЫПОЛНЕНА:" in formatted
     assert "read_file" in formatted
     assert "execute_cmd" in formatted
+    assert "testdev" in formatted
+    assert "abc1234" in formatted
+
 
 def test_client_receives_system_prompt():
     client = NVIDIAClient(

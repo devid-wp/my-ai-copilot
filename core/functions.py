@@ -136,6 +136,24 @@ FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["path"],
         },
     },
+    {
+        "name": "search_in_files",
+        "description": "Search for a text pattern across all project source files. Use this to find where a function/class/variable is defined or used before editing.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or pattern to search for (case-insensitive).",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Subdirectory to limit search to (optional, default: entire project).",
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
 ]
 
 __all__ = ["FUNCTION_DEFINITIONS"]

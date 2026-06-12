@@ -2,6 +2,7 @@ import sys
 import os
 import argparse
 import json
+from collections import deque
 
 # Windows: принудительно UTF-8 для корректного вывода кириллицы
 if sys.platform == "win32":
@@ -15,7 +16,7 @@ from dotenv import load_dotenv
 
 from core.llm_client import NVIDIAClient
 from core.agent_executor import dispatch_function
-from core.context_manager import get_project_context
+from core.context_manager import get_project_context, get_git_log
 from core.file_ops import parse_operations, execute_operations
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from ui.screen import (
@@ -27,10 +28,21 @@ from ui.screen import (
 # Загружаем .env если есть
 load_dotenv()
 
-# API ключ из .env или захардкоженный
-API_KEY = os.getenv("NVIDIA_API_KEY", "nvapi-...")
+# Провайдер: "nvidia" (по умолчанию) или "gemini"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia").strip().lower()
+
+# NVIDIA
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "nvapi-...")
 MODEL_CHAT = os.getenv("NVIDIA_MODEL_CHAT", "meta/llama-3.1-8b-instruct")
 MODEL_CODE = os.getenv("NVIDIA_MODEL_CODE", "meta/llama-3.3-70b-instruct")
+
+# Gemini
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL_CHAT = os.getenv("GEMINI_MODEL_CHAT", "gemini-2.0-flash")
+GEMINI_MODEL_CODE = os.getenv("GEMINI_MODEL_CODE", "gemini-2.5-pro")
+
+# Обратная совместимость: старое имя API_KEY для NVIDIA
+API_KEY = NVIDIA_API_KEY
 
 
 def _get_system_info(project_root):
@@ -47,7 +59,7 @@ def _get_system_info(project_root):
     )
 
 
-def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str):
+def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str, username: str = "dev"):
     """Autonomous agent loop: up to 40 iterations.
 
     Each iteration:
@@ -58,7 +70,7 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
     """
     from core.memory import AgentMemory
     session_file = os.path.join(project_root, "logs", "session.json")
-    memory = AgentMemory(session_file)
+    memory = AgentMemory(session_file, username=username)
 
     # Append user prompt to memory
     memory.add("user", initial_prompt)
@@ -66,6 +78,7 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
     MAX_ITERATIONS = 40
     iteration = 1
     no_action_streak = 0
+    last_commands: deque = deque(maxlen=3)
 
     while iteration <= MAX_ITERATIONS:
         update_status(f"Агент — шаг {iteration}/{MAX_ITERATIONS}...")
@@ -76,10 +89,15 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
             print("  💬 Модель чата")
         project_ctx = get_project_context(project_root)
         
-        # Build system prompt from template
+        # Build system prompt from template (with team context)
+        team_activity = memory.get_summary()
+        git_log = get_git_log(project_root)
         client.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             project_root=project_root,
-            project_tree=project_ctx
+            project_tree=project_ctx,
+            current_user=username,
+            team_activity=team_activity or "— нет данных —",
+            git_log=git_log or "— git log недоступен —",
         )
 
         # Ensure system message is the first message in memory
@@ -152,7 +170,23 @@ def run_agent_loop(client: NVIDIAClient, initial_prompt: str, project_root: str)
                     args = json.loads(raw_args) if raw_args else {}
                 except json.JSONDecodeError:
                     args = {}
-                result = dispatch_function(func_name, args, project_root)
+
+                # ── Loop detection for execute_cmd ──────────────────────
+                if func_name == "execute_cmd":
+                    cmd = args.get("command", "")
+                    if last_commands.count(cmd) >= 2:
+                        result = {
+                            "stdout": "",
+                            "stderr": f"LOOP DETECTED: '{cmd}' already ran and failed twice. Read stderr carefully and try a completely different approach.",
+                            "returncode": -1,
+                            "cwd": "",
+                        }
+                    else:
+                        last_commands.append(cmd)
+                        result = dispatch_function(func_name, args, project_root)
+                else:
+                    result = dispatch_function(func_name, args, project_root)
+
                 tool_results.append(f"[{func_name}] → {json.dumps(result, ensure_ascii=False)}")
                 
                 # Добавляем результат работы инструмента в память
@@ -236,7 +270,24 @@ def main():
     parser.add_argument(
         "--model", "-m",
         default=None,
-        help="Модель NVIDIA LLM (перезаписывает NVIDIA_MODEL из .env)",
+        help="Модель LLM (перезаписывает *_MODEL из .env)",
+    )
+    parser.add_argument(
+        "--provider",
+        default=None,
+        choices=["nvidia", "gemini"],
+        help="LLM провайдер: nvidia или gemini (перезаписывает LLM_PROVIDER из .env)",
+    )
+    parser.add_argument(
+        "--user", "-u",
+        default="dev",
+        help="Имя текущего разработчика (для командного режима)",
+    )
+    parser.add_argument(
+        "--oneshot", "-o",
+        default=None,
+        metavar="PROMPT",
+        help="Выполнить задачу и выйти: python main.py -o \"добавь тесты для core/agent_executor.py\"",
     )
     args = parser.parse_args()
 
@@ -246,28 +297,68 @@ def main():
         print(f"Папка проекта не найдена: {project_root}")
         sys.exit(1)
 
-    if args.model:
-        selected_model_chat = args.model
-        selected_model_code = args.model
-    else:
-        selected_model_chat = MODEL_CHAT
-        selected_model_code = MODEL_CODE
-
     project_ctx = get_project_context(project_root)
+    team_activity = ""
+    git_log = get_git_log(project_root)
     initial_system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         project_root=project_root,
-        project_tree=project_ctx
+        project_tree=project_ctx,
+        current_user=args.user,
+        team_activity=team_activity or "— нет данных —",
+        git_log=git_log or "— git log недоступен —",
     )
-    client = NVIDIAClient(
-        API_KEY,
-        system_prompt=initial_system_prompt,
-        model_chat=selected_model_chat,
-        model_code=selected_model_code
-    )
+
+    # ── Выбор провайдера (CLI флаг перезаписывает .env) ─────────────
+    provider = (args.provider or LLM_PROVIDER).strip().lower()
+
+    if provider == "gemini":
+        from core.gemini_client import GeminiClient
+        api_key_used = GEMINI_API_KEY
+        if not api_key_used:
+            print("❌ GEMINI_API_KEY не задан в .env. Добавьте ключ или смените LLM_PROVIDER=nvidia")
+            sys.exit(1)
+        if args.model:
+            chat_model = args.model
+            code_model = args.model
+        else:
+            chat_model = GEMINI_MODEL_CHAT
+            code_model = GEMINI_MODEL_CODE
+        client = GeminiClient(
+            api_key=api_key_used,
+            system_prompt=initial_system_prompt,
+            model_chat=chat_model,
+            model_code=code_model,
+        )
+        provider_label = "GEMINI"
+    else:
+        # NVIDIA (default)
+        if args.model:
+            chat_model = args.model
+            code_model = args.model
+        else:
+            chat_model = MODEL_CHAT
+            code_model = MODEL_CODE
+        client = NVIDIAClient(
+            NVIDIA_API_KEY,
+            system_prompt=initial_system_prompt,
+            model_chat=chat_model,
+            model_code=code_model,
+        )
+        provider_label = "NVIDIA"
+
+    # Oneshot режим — выполнить задачу и выйти
+    if args.oneshot:
+        mode_label = "ONESHOT"
+        model_display = args.model if args.model else f"{chat_model} & {code_model}"
+        draw_header(model_name=f"[{provider_label}] {model_display}  [ONESHOT]")
+        update_status(f"Проект: {project_root}  |  Задача: {args.oneshot[:60]}...")
+        run_agent_loop(client, args.oneshot, project_root, username=args.user)
+        sys.exit(0)
+
     mode_label = "AGENT" if args.agent else "CHAT"
-    model_display = args.model if args.model else f"{selected_model_chat} & {selected_model_code}"
-    draw_header(model_name=f"{model_display}  [{mode_label}]")
-    update_status(f"Проект: {project_root}")
+    model_display = args.model if args.model else f"{chat_model} & {code_model}"
+    draw_header(model_name=f"[{provider_label}] {model_display}  [{mode_label}]")
+    update_status(f"Проект: {project_root}  |  Провайдер: {provider_label}")
     if args.agent:
         update_status("Режим: АГЕНТ  (до 15 итераций, tool-calling включён)")
 
@@ -285,17 +376,49 @@ def main():
         if prompt.strip() == "!clear":
             from core.memory import AgentMemory
             session_file = os.path.join(project_root, "logs", "session.json")
-            memory = AgentMemory(session_file)
+            memory = AgentMemory(session_file, username=args.user)
             memory.clear()
             client.reset_history()
             show_success("История диалога и сессия очищены.")
+            continue
+
+        if prompt.strip() == "!compact":
+            from core.memory import AgentMemory
+            session_file = os.path.join(project_root, "logs", "session.json")
+            memory = AgentMemory(session_file, username=args.user)
+            history = memory.get_history()
+            # Найти последний запрос пользователя для резюме
+            user_msgs = [m for m in history if m.get('role') == 'user']
+            last_topic = user_msgs[-1]['content'][:150] if user_msgs else "general"
+            total = len(history)
+            memory.clear()
+            memory.add("user", f"[Контекст сжат. Предыдущая сессия: {total} сообщений. Последняя задача: {last_topic}]")
+            client.reset_history()
+            show_success(f"Контекст сжат: {total} сообщений → 1. Продолжай с чистого листа.")
+            continue
+
+        if prompt.strip() == "!help":
+            print("""
+  Команды:
+  !clear      — очистить историю диалога и сессию
+  !compact    — сжать контекст (оставить суть, убрать детали)
+  !help       — эта справка
+  exit / q    — выйти
+
+  Флаги запуска:
+  --agent / -a        — агентный режим (авто tool-calling до 40 шагов)
+  --oneshot "задача"  — выполнить задачу и выйти
+  --project PATH      — указать папку проекта
+  --provider gemini   — использовать Gemini вместо NVIDIA
+  --user имя          — имя разработчика для логов
+            """)
             continue
 
         if not prompt.strip():
             continue
 
         if args.agent:
-            run_agent_loop(client, prompt, project_root)
+            run_agent_loop(client, prompt, project_root, username=args.user)
         else:
             # ── Обычный режим (один запрос, стриминг) ───────────────────
             selected_model = client.select_model(prompt)
@@ -306,16 +429,19 @@ def main():
 
             system_info = _get_system_info(project_root)
             project_ctx = get_project_context(project_root)
-            context = system_info + "\n" + project_ctx
+            git_log = get_git_log(project_root)
             client.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
                 project_root=project_root,
-                project_tree=project_ctx
+                project_tree=project_ctx,
+                current_user=args.user,
+                team_activity="— нет данных —",
+                git_log=git_log or "— git log недоступен —",
             )
 
             spinner = Spinner("Генерация ответа...")
             spinner.start()
             try:
-                token_gen = client.ask_stream(prompt, context)
+                token_gen = client.ask_stream(prompt)
                 first_token = next(token_gen)
                 spinner.stop()
 
