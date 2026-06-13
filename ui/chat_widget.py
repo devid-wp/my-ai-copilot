@@ -168,7 +168,15 @@ class ChatWidget(ctk.CTkFrame):
             w.destroy()
 
     def _scroll_bottom(self):
-        self.after(20, lambda: self.canvas.yview_moveto(1.0))
+        if not hasattr(self, '_scroll_scheduled'):
+            self._scroll_scheduled = False
+        if not self._scroll_scheduled:
+            self._scroll_scheduled = True
+            self.after(100, self._do_scroll)
+
+    def _do_scroll(self):
+        self._scroll_scheduled = False
+        self.canvas.yview_moveto(1.0)
 
 
 class MessageBubble(ctk.CTkFrame):
@@ -227,6 +235,8 @@ class StreamingBubble(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="#141414", corner_radius=12)
         self._text = ""
+        self._pending = ""      # буфер непоказанных токенов
+        self._update_scheduled = False
 
         ctk.CTkFrame(
             self, width=3, height=1, fg_color="#2a2a2a", corner_radius=0
@@ -255,7 +265,18 @@ class StreamingBubble(ctk.CTkFrame):
 
     def append(self, token):
         self._text += token
-        self._label.configure(text=self._text + "▋")
+        self._pending += token
+        if not self._update_scheduled:
+            self._update_scheduled = True
+            self._label.after(50, self._flush)
+
+    def _flush(self):
+        self._update_scheduled = False
+        if self._pending:
+            self._label.configure(text=self._text + "▋")
+            self._pending = ""
 
     def finish(self):
+        self._pending = ""
+        self._update_scheduled = False
         self._label.configure(text=self._text)

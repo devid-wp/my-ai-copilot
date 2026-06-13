@@ -12,19 +12,7 @@ class AppWindow(ctk.CTk):
     def __init__(self, project_root: str = "."):
         super().__init__()
 
-        try:
-            import os as _os
-            from PIL import Image, ImageTk
-            _icon_path = _os.path.join(
-                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                "icon.png"
-            )
-            if _os.path.exists(_icon_path):
-                _img = Image.open(_icon_path).resize((32, 32))
-                self._icon_photo = ImageTk.PhotoImage(_img)
-                self.after(100, lambda: self.wm_iconphoto(True, self._icon_photo))
-        except Exception as e:
-            print(f"Icon error: {e}")
+        self._load_icon()
 
         self.project_root = os.path.abspath(project_root)
 
@@ -127,6 +115,14 @@ class AppWindow(ctk.CTk):
             command=self._on_clear
         ).pack(side="left")
 
+        # Кнопка настройки API ключей
+        ctk.CTkButton(
+            self.top_bar, text="⚙", width=36, height=36,
+            fg_color="transparent", hover_color="#1e1e1e",
+            font=ctk.CTkFont(size=14),
+            command=self._open_settings,
+        ).pack(side="right", padx=4)
+
     def _toggle_side_menu(self):
         self.side_menu.toggle()
 
@@ -154,8 +150,8 @@ class AppWindow(ctk.CTk):
                 error_occurred = True
             finally:
                 if not error_occurred:
-                    self.chat.finish_ai_message()
-                self.chat.set_input_enabled(True)
+                    self.after(0, self.chat.finish_ai_message)
+                self.after(0, lambda: self.chat.set_input_enabled(True))
 
         threading.Thread(target=stream_thread, daemon=True).start()
 
@@ -198,4 +194,27 @@ class AppWindow(ctk.CTk):
                 print(f"[AppWindow] Failed to load project context asynchronously: {e}")
 
         threading.Thread(target=load_thread, daemon=True).start()
+
+    def _open_settings(self):
+        from ui.settings_window import SettingsWindow
+        SettingsWindow(self)
+
+    def _load_icon(self):
+        import sys, os
+        from PIL import Image, ImageTk
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            if sys.platform == "win32":
+                ico = os.path.join(base, "icon.ico")
+                if os.path.exists(ico):
+                    self.after(200, lambda: self.iconbitmap(ico))
+            else:
+                # Linux/Mac — использовать PNG через wm_iconphoto
+                png = os.path.join(base, "icon.png")
+                if os.path.exists(png):
+                    img = Image.open(png).resize((32,32))
+                    self._icon_photo = ImageTk.PhotoImage(img)
+                    self.after(200, lambda: self.wm_iconphoto(True, self._icon_photo))
+        except Exception as e:
+            print(f"Icon: {e}")
 

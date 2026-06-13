@@ -109,7 +109,7 @@ class SideMenu(ctk.CTkFrame):
             anchor="w", fg_color="transparent",
             hover_color="#1e1e1e", text_color="#666",
             font=ctk.CTkFont(size=11), height=36,
-            command=lambda: print("TODO: settings"),
+            command=self._open_settings,
         ).pack(side="bottom", fill="x", padx=8, pady=4)
 
     def toggle(self):
@@ -140,3 +140,7 @@ class SideMenu(ctk.CTkFrame):
         mh = self.winfo_height()
         if not (mx <= event.x_root <= mx+mw and my <= event.y_root <= my+mh):
             self.hide()
+
+    def _open_settings(self):
+        from ui.settings_window import SettingsWindow
+        SettingsWindow(self._app)
