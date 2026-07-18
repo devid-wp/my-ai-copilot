@@ -1,16 +1,50 @@
-# Скрываем API-ключи и конфиги
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
-# Скрываем системные файлы Python
-__pycache__/
-*.pyc
-# Скрываем логи
-history.log
-logs/
+.citadex/
+
+# Python environments and bytecode
 .venv/
-dist/
-build/
-*.egg-info/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test, type-check and lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# Runtime output
+logs/
+*.log
+history.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
