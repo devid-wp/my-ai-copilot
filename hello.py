@@ -1,1 +1,0 @@
-def greet(name):\n    print(f"Hello, {name}!")\n\nif __name__ == '__main__':\n    greet("World")

@@ -1,14 +1,16 @@
 # core/memory.py
 """Persistent conversation memory for the agent with team/multi-user support."""
-import os
+
 import json
+import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from pathlib import Path
+from typing import Any
 
 
 class AgentMemory:
     """Stores conversation history on disk, preserving first system message during trimming.
-    
+
     Each message entry includes optional ``user`` and ``timestamp`` fields
     for collaborative/team mode.
     """
@@ -16,36 +18,40 @@ class AgentMemory:
     def __init__(self, session_path: str = "logs/session.json", username: str = "dev"):
         self.session_path = session_path
         self.username = username
-        self.history: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
         self._load()
 
     def _load(self) -> None:
         """Load history from json file if it exists."""
         if os.path.isfile(self.session_path):
             try:
-                with open(self.session_path, "r", encoding="utf-8") as f:
+                with open(self.session_path, encoding="utf-8") as f:
                     self.history = json.load(f)
             except Exception:
                 self.history = []
 
     def _save(self) -> None:
-        """Save history to json file, creating directories if missing."""
-        dir_name = os.path.dirname(self.session_path)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
-        try:
-            with open(self.session_path, "w", encoding="utf-8") as f:
-                json.dump(self.history, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        """Persist history atomically so an interrupted write cannot corrupt it."""
+        path = Path(self.session_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps(self.history, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+
+    def save(self) -> None:
+        """Public persistence hook used after replacing the system prompt."""
+        self._save()
 
     def add(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the history and persist to disk.
-        
+
         Automatically stamps each message with the current UTC timestamp
         and the current username for team-mode traceability.
         """
-        msg: Dict[str, Any] = {
+        msg: dict[str, Any] = {
             "role": role,
             "content": content,
             "user": self.username,
@@ -55,7 +61,7 @@ class AgentMemory:
         self.history.append(msg)
         self._save()
 
-    def get_history(self) -> List[Dict[str, Any]]:
+    def get_history(self) -> list[dict[str, Any]]:
         """Return the current list of messages."""
         return self.history
 
@@ -80,7 +86,7 @@ class AgentMemory:
         first = self.history[0]
         if first.get("role") == "system":
             # Keep the system message, and take the last (max_messages - 1) messages from the rest
-            rest = self.history[-(max_messages - 1):]
+            rest = self.history[-(max_messages - 1) :]
             self.history = [first] + rest
         else:
             self.history = self.history[-max_messages:]
@@ -88,13 +94,10 @@ class AgentMemory:
 
     def get_summary(self) -> str:
         """Return the last 5 non-system actions as a short human-readable string.
-        
+
         Used to inject recent team activity into the system prompt.
         """
-        non_system = [
-            m for m in self.history
-            if m.get("role") != "system"
-        ]
+        non_system = [m for m in self.history if m.get("role") != "system"]
         recent = non_system[-5:]
         if not recent:
             return ""

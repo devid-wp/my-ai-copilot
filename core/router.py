@@ -1,19 +1,38 @@
-# core/router.py
-"""Classifier to route prompts to chat or code models."""
+"""Lightweight prompt routing between chat and code models."""
 
-def classify_prompt(prompt: str) -> str:
-    """Classify the prompt as either 'code' (for development tasks) or 'chat' (for Q&A).
-    
-    Case-insensitive search is performed on keywords and their common Russian equivalents.
-    """
+CODE_KEYWORDS = {
+    "write",
+    "create",
+    "refactor",
+    "fix",
+    "edit",
+    "implement",
+    "generate",
+    "add",
+    "update",
+    "delete",
+    "debug",
+    "test",
+    "build",
+    "run",
+    "напиши",
+    "создай",
+    "исправь",
+    "измени",
+    "сделай",
+    "добавь",
+    "удали",
+    "отладь",
+    "поправь",
+    "сгенерируй",
+    "выполни",
+    "запусти",
+    "тест",
+}
+
+
+def classify_prompt(prompt: str | None) -> str:
     if not prompt:
         return "chat"
-        
-    p = prompt.lower()
-    keywords = [
-        "write", "create", "refactor", "fix", "edit", "implement", "generate", "add", "update", "delete", "debug",
-        "напиши", "создай", "исправь", "измени", "сделай", "добавь", "удали", "отладь", "поправь", "сгенерируй", "выполни", "запусти"
-    ]
-    if any(kw in p for kw in keywords):
-        return "code"
-    return "chat"
+    lowered = prompt.casefold()
+    return "code" if any(keyword in lowered for keyword in CODE_KEYWORDS) else "chat"

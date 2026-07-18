@@ -1,277 +1,231 @@
-"""Agent executor – bridges OpenAI function calls to actual Python operations.
+"""Safe execution layer for model-requested tools."""
 
-The executor is deliberately thin: each function validates inputs via ``core.security``
-and then performs the requested action. Results are returned as dictionaries that
-will be sent back to the model with ``role='tool'``.
-
-All actions are logged to ``logs/agent.log`` using the shared logger from
-``core.security`` (setup via ``_setup_logger``).
-"""
+from __future__ import annotations
 
 import os
+import shutil
 import subprocess
-import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from core.security import (
-    ensure_path_safe,
-    ensure_command_safe,
+    ApprovalCallback,
     _setup_logger,
+    ensure_mutation_safe,
+    ensure_path_safe,
+    parse_command,
+    require_approval,
 )
 
-# Global logger – will be initialised on first call with the project root.
-LOGGER = None
-
-# Persistent working directory for execute_cmd — survives across calls in one session.
-_cwd: str | None = None
+MAX_READ_BYTES = 50 * 1024
+MAX_OUTPUT_CHARS = 20_000
 
 
-def get_logger(project_root: str):
-    global LOGGER
-    if LOGGER is None:
-        LOGGER = _setup_logger(project_root)
-    return LOGGER
+def _target(project_root: str, raw_path: str, *, mutation: bool = False) -> Path:
+    root = Path(project_root).resolve()
+    raw = Path(raw_path)
+    candidate = raw if raw.is_absolute() else root / raw
+    validator = ensure_mutation_safe if mutation else ensure_path_safe
+    return validator(candidate, root)
 
 
-def _init_cwd(project_root: str) -> str:
-    """Return _cwd, initialising it to project_root on first use."""
-    global _cwd
-    if _cwd is None:
-        _cwd = os.path.normpath(os.path.abspath(project_root))
-    return _cwd
+def _approved(callback: ApprovalCallback | None, action: str, detail: str) -> None:
+    require_approval(callback, action, detail)
 
 
-# ---------------------------------------------------------------------------
-# Helper to read/write files safely
-# ---------------------------------------------------------------------------
-
-def _write_file(path: Path, content: str) -> None:
+def create_file(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]), mutation=True)
+    exists = path.exists()
+    _approved(approve, "overwrite file" if exists else "create file", str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    content = str(args.get("content", ""))
+    temporary = path.with_name(f".{path.name}.citadex.tmp")
+    temporary.write_text(content, encoding="utf-8", newline="\n")
+    temporary.replace(path)
+    _setup_logger(project_root).info("create_file %s", path)
+    return {
+        "status": "updated" if exists else "created",
+        "path": str(path),
+        "bytes": len(content.encode("utf-8")),
+    }
 
 
-def _read_file(path: Path, max_bytes: int = 50 * 1024) -> str:
-    data = path.read_bytes()[:max_bytes]
-    return data.decode("utf-8", errors="replace")
+def edit_file(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]), mutation=True)
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {args['path']}")
+    patches = list(args.get("patches") or [])
+    if not patches:
+        raise ValueError("At least one patch is required.")
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    normalized: list[tuple[int, int, str]] = []
+    for patch in patches:
+        start = int(patch["start_line"])
+        end = int(patch["end_line"])
+        if start < 1 or end < start or end > len(lines) + 1:
+            raise ValueError(f"Invalid line range [{start}, {end}) for {len(lines)} lines.")
+        normalized.append((start, end, str(patch["new_content"])))
+    ordered = sorted(normalized, reverse=True)
+    for index in range(len(ordered) - 1):
+        later_start, _, _ = ordered[index]
+        _, earlier_end, _ = ordered[index + 1]
+        if earlier_end > later_start:
+            raise ValueError("Overlapping patches are not allowed.")
+    _approved(approve, "edit file", f"{path} ({len(ordered)} patch(es))")
+    for start, end, replacement in ordered:
+        lines[start - 1 : end - 1] = [replacement]
+    temporary = path.with_name(f".{path.name}.citadex.tmp")
+    temporary.write_text("".join(lines), encoding="utf-8", newline="\n")
+    temporary.replace(path)
+    _setup_logger(project_root).info("edit_file %s", path)
+    return {"status": "edited", "path": str(path), "patches": len(ordered)}
 
 
-# ---------------------------------------------------------------------------
-# Executable functions – signatures match those defined in ``core/functions``
-# ---------------------------------------------------------------------------
-
-def create_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """Create (or overwrite) a file, always resolving path relative to _cwd."""
-    global _cwd
-    _init_cwd(project_root)
-
-    rel_path = args["path"]
-    content = args.get("content", "")
-
-    # Resolve relative to _cwd so the agent's working directory is respected
-    if os.path.isabs(rel_path):
-        abs_path = os.path.normpath(rel_path)
+def delete_file(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]), mutation=True)
+    if not path.exists():
+        raise FileNotFoundError(f"Path not found: {args['path']}")
+    action = "delete directory" if path.is_dir() else "delete file"
+    _approved(approve, action, str(path))
+    if path.is_dir():
+        shutil.rmtree(path)
     else:
-        abs_path = os.path.normpath(os.path.join(_cwd, rel_path))
+        path.unlink()
+    _setup_logger(project_root).info("%s %s", action.replace(" ", "_"), path)
+    return {"status": "deleted", "path": str(path)}
 
-    # Security check against project root
+
+def make_directory(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]), mutation=True)
+    _approved(approve, "create directory", str(path))
+    path.mkdir(parents=True, exist_ok=True)
+    _setup_logger(project_root).info("make_directory %s", path)
+    return {"status": "directory_created", "path": str(path)}
+
+
+def execute_cmd(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    command = str(args["command"])
+    argv = parse_command(command)
+    _approved(approve, "execute command", command)
     try:
-        ensure_path_safe(abs_path, project_root)
-    except Exception as e:
-        return {"status": "error", "path": abs_path, "error": str(e)}
-
-    try:
-        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        if not os.path.exists(abs_path):
-            return {"status": "error", "path": abs_path, "error": "File not found after write"}
-        get_logger(project_root).info("create_file %s", abs_path)
-        return {"status": "created", "path": abs_path, "bytes": len(content)}
-    except Exception as e:
-        get_logger(project_root).error("create_file failed: %s", str(e))
-        return {"status": "error", "path": abs_path, "error": str(e)}
-
-
-def edit_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    global _cwd
-    _init_cwd(project_root)
-
-    rel_path = args["path"]
-    patches: List[Dict[str, Any]] = args["patches"]
-
-    if os.path.isabs(rel_path):
-        abs_path = Path(os.path.normpath(rel_path))
-    else:
-        abs_path = Path(os.path.normpath(os.path.join(_cwd, rel_path)))
-
-    try:
-        ensure_path_safe(str(abs_path), project_root)
-    except Exception as e:
-        return {"status": "error", "path": str(abs_path), "error": str(e)}
-
-    if not abs_path.is_file():
-        return {"status": "error", "path": str(abs_path), "error": f"Файл '{rel_path}' не существует."}
-
-    try:
-        os.makedirs(abs_path.parent, exist_ok=True)
-        lines = abs_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        for patch in sorted(patches, key=lambda p: p["start_line"]):
-            start = patch["start_line"] - 1
-            end = patch["end_line"]
-            new_content = patch["new_content"]
-            lines[start:end] = [new_content]
-        abs_path.write_text("".join(lines), encoding="utf-8")
-        get_logger(project_root).info("edit_file %s", abs_path)
-        return {"status": "edited", "path": str(abs_path)}
-    except Exception as e:
-        return {"status": "error", "path": str(abs_path), "error": str(e)}
-
-
-def delete_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    rel_path = args["path"]
-    abs_path = ensure_path_safe(os.path.join(project_root, rel_path), project_root)
-    if abs_path.is_file():
-        abs_path.unlink()
-        get_logger(project_root).info("delete_file %s", rel_path)
-        return {"result": "deleted", "path": rel_path}
-    else:
-        raise FileNotFoundError(f"Файл '{rel_path}' не найден.")
-
-
-def make_directory(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """Create a directory, resolving relative paths against _cwd."""
-    global _cwd
-    _init_cwd(project_root)
-
-    rel_path = args["path"]
-    if os.path.isabs(rel_path):
-        abs_path = os.path.normpath(rel_path)
-    else:
-        abs_path = os.path.normpath(os.path.join(_cwd, rel_path))
-
-    try:
-        ensure_path_safe(abs_path, project_root)
-    except Exception as e:
-        return {"status": "error", "path": abs_path, "error": str(e)}
-
-    try:
-        os.makedirs(abs_path, exist_ok=True)
-        get_logger(project_root).info("make_directory %s", abs_path)
-        return {"status": "directory_created", "path": abs_path}
-    except Exception as e:
-        return {"status": "error", "path": abs_path, "error": str(e)}
-
-
-def execute_cmd(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """Execute a shell command with persistent working directory support.
-
-    Intercepts bare ``cd <path>`` commands and updates the module-level _cwd
-    without spawning a subprocess. All other commands run with cwd=_cwd.
-
-    Returns a structured dict: {stdout, stderr, returncode, cwd}.
-    """
-    global _cwd
-    current_cwd = _init_cwd(project_root)
-
-    command: str = args["command"].strip()
-
-    # ── Intercept bare cd commands ──────────────────────────────────────────
-    if command == "cd" or (command.startswith("cd ") and "&&" not in command and ";" not in command):
-        parts = command.split(None, 1)
-        if len(parts) == 2:
-            target = parts[1].strip().strip('"').strip("'")
-            new_path = os.path.normpath(
-                os.path.join(current_cwd, target) if not os.path.isabs(target) else target
-            )
-            if os.path.isdir(new_path):
-                _cwd = new_path
-                get_logger(project_root).info("cd → %s", _cwd)
-                return {"stdout": f"Changed directory to {_cwd}", "stderr": "", "returncode": 0, "cwd": _cwd}
-            else:
-                return {"stdout": "", "stderr": f"cd: {target}: No such directory", "returncode": 1, "cwd": current_cwd}
-        else:
-            # bare "cd" with no arg — go to project root
-            _cwd = os.path.normpath(os.path.abspath(project_root))
-            return {"stdout": f"Changed directory to {_cwd}", "stderr": "", "returncode": 0, "cwd": _cwd}
-
-    # ── Normal command ──────────────────────────────────────────────────────
-    ensure_command_safe(command)
-
-    try:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            cwd=_cwd,
+        result = subprocess.run(
+            argv,
+            shell=False,
+            cwd=Path(project_root).resolve(),
             capture_output=True,
             text=True,
             timeout=30,
         )
-        get_logger(project_root).info("execute_cmd [cwd=%s] %s", _cwd, command)
+        _setup_logger(project_root).info("execute_cmd %s", command)
         return {
-            "stdout": proc.stdout,
-            "stderr": proc.stderr,
-            "returncode": proc.returncode,
-            "cwd": str(_cwd),
+            "stdout": result.stdout[-MAX_OUTPUT_CHARS:],
+            "stderr": result.stderr[-MAX_OUTPUT_CHARS:],
+            "returncode": result.returncode,
+            "cwd": str(Path(project_root).resolve()),
+            "truncated": len(result.stdout) > MAX_OUTPUT_CHARS or len(result.stderr) > MAX_OUTPUT_CHARS,
         }
     except subprocess.TimeoutExpired:
-        return {"stdout": "", "stderr": "Ошибка: Превышен таймаут (30 с).", "returncode": -1, "cwd": str(_cwd)}
-    except Exception as e:
-        return {"stdout": "", "stderr": str(e), "returncode": -1, "cwd": str(_cwd)}
+        return {
+            "stdout": "",
+            "stderr": "Command timed out after 30 seconds.",
+            "returncode": -1,
+            "cwd": str(Path(project_root).resolve()),
+        }
 
 
-def list_directory(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    rel_path = args.get("path", "")
-    abs_path = ensure_path_safe(os.path.join(project_root, rel_path), project_root)
-    entries = [{"name": e.name, "is_dir": e.is_dir()} for e in abs_path.iterdir()]
-    get_logger(project_root).info("list_directory %s", rel_path)
-    return {"result": "listed", "path": rel_path, "entries": entries}
+def list_directory(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args.get("path", "")))
+    if not path.is_dir():
+        raise NotADirectoryError(str(path))
+    entries: list[dict[str, str | bool]] = sorted(
+        ({"name": item.name, "is_dir": item.is_dir()} for item in path.iterdir()),
+        key=lambda item: (not item["is_dir"], str(item["name"]).lower()),
+    )
+    return {"status": "listed", "path": str(path), "entries": entries}
 
 
-def read_file(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    rel_path = args["path"]
-    abs_path = ensure_path_safe(os.path.join(project_root, rel_path), project_root)
-    if not abs_path.is_file():
-        raise FileNotFoundError(f"Файл '{rel_path}' не найден.")
-    content = _read_file(abs_path, max_bytes=50 * 1024)
-    get_logger(project_root).info("read_file %s", rel_path)
-    return {"result": "read", "path": rel_path, "content": content}
+def read_file(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]))
+    if not path.is_file():
+        raise FileNotFoundError(str(path))
+    data = path.read_bytes()[:MAX_READ_BYTES]
+    return {
+        "status": "read",
+        "path": str(path),
+        "content": data.decode("utf-8", errors="replace"),
+        "truncated": path.stat().st_size > MAX_READ_BYTES,
+    }
 
 
-def search_in_files(args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """Search for a text pattern across all project source files."""
-    pattern = args["pattern"]
-    path = args.get("path", "")
-    search_root = os.path.normpath(os.path.join(project_root, path)) if path else project_root
-
-    results = []
-    skip_dirs = {'.git', '__pycache__', 'node_modules', 'venv', '.pytest_cache', 'logs', '~'}
-    exts = ('.py', '.js', '.ts', '.json', '.md', '.txt', '.yaml', '.yml', '.toml', '.bat', '.sh')
-
-    for root, dirs, files in os.walk(search_root):
-        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith('.')]
-        for fname in files:
-            if not fname.endswith(exts):
+def search_in_files(
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    root = _target(project_root, str(args.get("path", "")))
+    pattern = str(args["pattern"]).casefold()
+    matches: list[str] = []
+    skip = {".git", ".venv", "venv", "node_modules", "logs", "__pycache__"}
+    extensions = {".py", ".js", ".ts", ".json", ".md", ".toml", ".yaml", ".yml", ".sh", ".ps1", ".bat"}
+    for current, dirs, files in os.walk(root):
+        dirs[:] = [name for name in dirs if name not in skip and not name.startswith(".")]
+        for name in files:
+            path = Path(current) / name
+            if path.suffix.lower() not in extensions:
                 continue
-            fpath = os.path.join(root, fname)
             try:
-                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
-                    for i, line in enumerate(f, 1):
-                        if pattern.lower() in line.lower():
-                            rel = os.path.relpath(fpath, project_root)
-                            results.append(f"{rel}:{i}: {line.rstrip()}")
-            except Exception:
+                for number, line in enumerate(
+                    path.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+                ):
+                    if pattern in line.casefold():
+                        matches.append(f"{path.relative_to(project_root)}:{number}: {line}")
+                        if len(matches) >= 80:
+                            return {
+                                "status": "found",
+                                "count": len(matches),
+                                "matches": matches,
+                                "truncated": True,
+                            }
+            except OSError:
                 continue
+    return {
+        "status": "found" if matches else "not_found",
+        "count": len(matches),
+        "matches": matches,
+        "truncated": False,
+    }
 
-    get_logger(project_root).info("search_in_files pattern=%s", pattern)
 
-    if not results:
-        return {"result": "not_found", "pattern": pattern, "matches": []}
-    return {"result": "found", "pattern": pattern, "count": len(results), "matches": results[:80]}
-
-
-# Mapping from function name (as sent by the model) to the Python implementation.
-FUNCTION_MAP = {
+FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "create_file": create_file,
     "edit_file": edit_file,
     "delete_file": delete_file,
@@ -283,24 +237,17 @@ FUNCTION_MAP = {
 }
 
 
-def dispatch_function(name: str, args: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """Call the appropriate function and return a JSON-serialisable dict.
-
-    Shows a status line before execution so the user knows what the agent is doing.
-    Any exception is caught and turned into an ``error`` field so the model can react to it.
-    """
-    from ui.screen import show_tool_status  # late import to avoid circular deps
-
-    func = FUNCTION_MAP.get(name)
-    if func is None:
-        raise ValueError(f"Неподдерживаемая функция '{name}'.")
-
-    # Show human-readable status: ⏳ Выполняю: create_file для src/main.py
-    path_hint = args.get("path") or args.get("command") or ""
-    show_tool_status(name, str(path_hint))
-
+def dispatch_function(
+    name: str,
+    args: dict[str, Any],
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> dict[str, Any]:
+    function = FUNCTION_MAP.get(name)
+    if function is None:
+        raise ValueError(f"Unsupported function: {name}")
     try:
-        return func(args, project_root)
-    except Exception as e:
-        get_logger(project_root).error("Function %s failed: %s", name, str(e))
-        return {"error": str(e)}
+        return function(args, project_root, approve)
+    except Exception as exc:
+        _setup_logger(project_root).warning("%s denied or failed: %s", name, exc)
+        return {"status": "error", "error": str(exc)}

@@ -3,9 +3,10 @@
 These schemas are passed as the ``functions`` parameter in the chat completion
 request so the model knows which tools it can call.
 """
-from typing import List, Dict, Any
 
-FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
+from typing import Any
+
+FUNCTION_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "create_file",
         "description": "Create a new file (or overwrite an existing one) with the given content.",
@@ -14,7 +15,9 @@ FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Relative path (from project root) for the file to create, e.g. 'src/main.py'.",
+                    "description": (
+                        "Relative path from project root for the new file, for example 'src/main.py'."
+                    ),
                 },
                 "content": {
                     "type": "string",
@@ -49,7 +52,9 @@ FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
                             },
                             "end_line": {
                                 "type": "integer",
-                                "description": "Exclusive end line number (last line replaced = end_line - 1).",
+                                "description": (
+                                    "Exclusive end line number; the last replaced line is end_line - 1."
+                                ),
                             },
                             "new_content": {
                                 "type": "string",
@@ -94,15 +99,16 @@ FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
     {
         "name": "execute_cmd",
         "description": (
-            "Execute a shell command inside the project root directory. "
-            "Only whitelisted commands are allowed: python, git, pip, npm, node, cargo, go, ls, dir, echo, cat."
+            "Execute a single allowlisted command inside the project root directory. "
+            "Shell operators, redirects and inline interpreter code are forbidden. "
+            "Only whitelisted development commands are allowed."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The full command string to execute, e.g. 'python agent_test.py'.",
+                    "description": "A single command, e.g. 'python -m pytest tests -q'.",
                 },
             },
             "required": ["command"],
@@ -138,7 +144,10 @@ FUNCTION_DEFINITIONS: List[Dict[str, Any]] = [
     },
     {
         "name": "search_in_files",
-        "description": "Search for a text pattern across all project source files. Use this to find where a function/class/variable is defined or used before editing.",
+        "description": (
+            "Search for text across project source files. Use this to find "
+            "definitions and usages before editing."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

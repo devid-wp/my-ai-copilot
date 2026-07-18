@@ -1,7 +1,9 @@
 # core/ollama_client.py
-import httpx
 import json
-from typing import Generator, List, Dict, Any, Optional
+from collections.abc import Generator
+from typing import Any
+
+import httpx
 
 
 class OllamaClient:
@@ -18,8 +20,8 @@ class OllamaClient:
         self.model_chat = model_chat
         self.model_code = model_code
         self.base_url = base_url
-        self.history: List[Dict[str, Any]] = []
-        self._last_tool_calls: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
+        self._last_tool_calls: list[dict[str, Any]] = []
 
     def is_available(self) -> bool:
         """Проверить что Ollama запущен."""
@@ -29,7 +31,7 @@ class OllamaClient:
         except Exception:
             return False
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         """Список установленных моделей."""
         try:
             r = httpx.get(f"{self.base_url}/api/tags", timeout=5)
@@ -40,15 +42,18 @@ class OllamaClient:
 
     def select_model(self, prompt: str) -> str:
         from core.router import classify_prompt
+
         return self.model_code if classify_prompt(prompt) == "code" else self.model_chat
 
     def ask_stream(
         self,
         prompt: str,
         context: str = "",
-        messages: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> Generator[str, None, None]:
         self._last_tool_calls = []
+        external_messages = messages is not None
+        full_response: list[str] = []
 
         if messages is not None:
             # Строим из переданной истории
@@ -94,6 +99,7 @@ class OllamaClient:
                         chunk = json.loads(line)
                         token = chunk.get("message", {}).get("content", "")
                         if token:
+                            full_response.append(token)
                             yield token
                         if chunk.get("done"):
                             break
@@ -104,14 +110,14 @@ class OllamaClient:
         except Exception as e:
             yield f"\n[❌ Ошибка Ollama: {e}]"
 
-        if messages is None:
+        if not external_messages:
             if prompt:
                 self.history.append({"role": "user", "content": prompt})
-            self.history.append({"role": "assistant", "content": ""})
+            self.history.append({"role": "assistant", "content": "".join(full_response)})
             if len(self.history) > 20:
                 self.history = self.history[-20:]
 
-    def get_last_tool_calls(self) -> List:
+    def get_last_tool_calls(self) -> list:
         return []  # Ollama не поддерживает tool-calling в базовом варианте
 
     def reset_history(self) -> None:

@@ -1,12 +1,13 @@
 """tests/test_prompts.py — Unit tests for system prompt template and client integration"""
-import sys
+
 import os
-import pytest
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.llm_client import NVIDIAClient
+from core.prompts import SYSTEM_PROMPT_TEMPLATE
+
 
 def test_system_prompt_template_placeholders():
     formatted = SYSTEM_PROMPT_TEMPLATE.format(
@@ -18,8 +19,7 @@ def test_system_prompt_template_placeholders():
     )
     assert "/test/root" in formatted
     assert "file.py" in formatted
-    assert "автономный агент-разработчик" in formatted
-    assert "ЗАДАЧА ВЫПОЛНЕНА:" in formatted
+    assert "Citadex" in formatted
     assert "read_file" in formatted
     assert "execute_cmd" in formatted
     assert "testdev" in formatted
@@ -31,16 +31,17 @@ def test_client_receives_system_prompt():
         api_key="nvapi-test",
         system_prompt="Custom System Prompt",
         model_chat="meta/llama-3.1-8b-instruct",
-        model_code="meta/llama-3.3-70b-instruct"
+        model_code="meta/llama-3.3-70b-instruct",
     )
     assert client.system_prompt == "Custom System Prompt"
+
 
 def test_client_message_structure(monkeypatch):
     client = NVIDIAClient(
         api_key="nvapi-test",
         system_prompt="My Test System Prompt",
         model_chat="meta/llama-3.1-8b-instruct",
-        model_code="meta/llama-3.3-70b-instruct"
+        model_code="meta/llama-3.3-70b-instruct",
     )
 
     called_messages = []

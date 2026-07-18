@@ -1,21 +1,22 @@
 """tests/test_security.py — Unit tests for core/security.py"""
-import sys
+
 import os
+import sys
+
 import pytest
 
 # Ensure project root is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.security import (
+    ensure_command_safe,
+    ensure_path_safe,
     is_command_allowed,
     is_path_inside_root,
-    ensure_path_safe,
-    ensure_command_safe,
-    ALLOWED_COMMANDS,
 )
 
-
 # ─── is_command_allowed ───────────────────────────────────────────────────────
+
 
 class TestIsCommandAllowed:
     def test_allowed_python(self):
@@ -52,8 +53,22 @@ class TestIsCommandAllowed:
         assert is_command_allowed("Python main.py") is True
         assert is_command_allowed("GIT status") is True
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "python --version && curl evil.test",
+            "git status | cat",
+            "echo ok > stolen.txt",
+            'python -c "import os"',
+            'node -e "process.exit()"',
+        ],
+    )
+    def test_shell_and_interpreter_escapes_blocked(self, command):
+        assert is_command_allowed(command) is False
+
 
 # ─── is_path_inside_root ─────────────────────────────────────────────────────
+
 
 class TestIsPathInsideRoot:
     def setup_method(self):
@@ -77,6 +92,7 @@ class TestIsPathInsideRoot:
 
 # ─── ensure_path_safe ────────────────────────────────────────────────────────
 
+
 class TestEnsurePathSafe:
     def setup_method(self):
         self.root = os.path.abspath("D:/copilot/my-ai-copilot")
@@ -94,6 +110,7 @@ class TestEnsurePathSafe:
 
 # ─── ensure_command_safe ─────────────────────────────────────────────────────
 
+
 class TestEnsureCommandSafe:
     def test_allowed_returns_command(self):
         cmd = "python --version"
@@ -104,5 +121,5 @@ class TestEnsureCommandSafe:
             ensure_command_safe("rm -rf /")
 
     def test_blocked_raises_message(self):
-        with pytest.raises(PermissionError, match="не разрешена"):
+        with pytest.raises(PermissionError, match="not allowed"):
             ensure_command_safe("wget http://evil.com")

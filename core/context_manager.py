@@ -8,41 +8,112 @@ import os
 
 # Каталоги, которые пропускаем
 SKIP_DIRS = {
-    '.git', '__pycache__', 'node_modules', '.venv', 'venv', 'env',
-    'dist', 'build', '.next', '.nuxt', '.idea', '.vscode',
-    'coverage', '.pytest_cache', '.mypy_cache', '.tox',
-    '.eggs', '.sass-cache', '.cache',
+    ".git",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    ".idea",
+    ".vscode",
+    "coverage",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    ".eggs",
+    ".sass-cache",
+    ".cache",
+    "logs",
+    "~",
 }
 
 # Расширения файлов, которые читаем
 CODE_EXTENSIONS = {
-    '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
-    '.html', '.css', '.scss', '.less',
-    '.json', '.yaml', '.yml', '.toml', '.cfg', '.ini',
-    '.md', '.txt', '.rst',
-    '.sh', '.bat', '.ps1', '.cmd',
-    '.sql', '.graphql', '.xml', '.svg',
-    '.c', '.cpp', '.h', '.hpp', '.cs', '.java', '.go',
-    '.rs', '.rb', '.php', '.lua', '.r',
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".mjs",
+    ".cjs",
+    ".html",
+    ".css",
+    ".scss",
+    ".less",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".md",
+    ".txt",
+    ".rst",
+    ".sh",
+    ".bat",
+    ".ps1",
+    ".cmd",
+    ".sql",
+    ".graphql",
+    ".xml",
+    ".svg",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".java",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".lua",
+    ".r",
 }
 
 # Файлы по имени (без расширения или особые имена)
 KNOWN_FILES = {
-    'Dockerfile', 'Makefile', 'Rakefile', 'Gemfile',
-    'Procfile', 'Vagrantfile', '.gitignore', '.dockerignore',
-    '.env.example', 'requirements.txt', 'setup.py', 'setup.cfg',
-    'pyproject.toml', 'package.json', 'tsconfig.json',
+    "Dockerfile",
+    "Makefile",
+    "Rakefile",
+    "Gemfile",
+    "Procfile",
+    "Vagrantfile",
+    ".gitignore",
+    ".dockerignore",
+    ".env.example",
+    "requirements.txt",
+    "setup.py",
+    "setup.cfg",
+    "pyproject.toml",
+    "package.json",
+    "tsconfig.json",
 }
 
 # Файлы, которые всегда пропускаем
 SKIP_FILES = {
-    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
-    'poetry.lock', 'Pipfile.lock', 'composer.lock',
-    '.env', '.DS_Store', 'Thumbs.db',
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Pipfile.lock",
+    "composer.lock",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    "id_rsa",
+    "id_ed25519",
+    ".DS_Store",
+    "Thumbs.db",
 }
 
-MAX_FILE_SIZE = 15_000    # 15 KB на файл
-MAX_TOTAL_SIZE = 80_000   # 80 KB общий лимит контекста
+MAX_FILE_SIZE = 15_000  # 15 KB на файл
+MAX_TOTAL_SIZE = 80_000  # 80 KB общий лимит контекста
 
 
 def _should_read(fname):
@@ -71,17 +142,14 @@ def get_project_context(project_root):
 
     for root, dirs, files in os.walk(project_root):
         # Фильтруем каталоги — пропускаем скрытые и ненужные
-        dirs[:] = sorted(
-            d for d in dirs
-            if d not in SKIP_DIRS and not d.startswith('.')
-        )
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
 
         rel_root = os.path.relpath(root, project_root)
-        if rel_root == '.':
-            rel_root = ''
+        if rel_root == ".":
+            rel_root = ""
 
         depth = 0 if not rel_root else rel_root.count(os.sep) + 1
-        indent = '  ' * depth
+        indent = "  " * depth
 
         if rel_root:
             tree_lines.append(f"{indent}{os.path.basename(root)}/")
@@ -90,7 +158,7 @@ def get_project_context(project_root):
             if fname in SKIP_FILES:
                 continue
 
-            file_indent = '  ' * (depth + 1)
+            file_indent = "  " * (depth + 1)
             tree_lines.append(f"{file_indent}{fname}")
 
             # Читаем только подходящие файлы
@@ -111,13 +179,13 @@ def get_project_context(project_root):
                 continue
 
             try:
-                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(full_path, encoding="utf-8", errors="ignore") as f:
                     content = f.read()
             except OSError:
                 continue
 
             rel_path = os.path.join(rel_root, fname) if rel_root else fname
-            rel_path = rel_path.replace(os.sep, '/')
+            rel_path = rel_path.replace(os.sep, "/")
 
             file_sections.append(f"--- {rel_path} ---\n{content}")
             total_size += len(content)
@@ -135,7 +203,7 @@ def get_project_context(project_root):
         parts.append("File contents:")
         parts.extend(file_sections)
 
-    return '\n'.join(parts)
+    return "\n".join(parts)
 
 
 def get_git_log(project_root: str) -> str:
@@ -159,4 +227,3 @@ def get_git_log(project_root: str) -> str:
         return ""
     except Exception:
         return ""
-
