@@ -1,9 +1,16 @@
 # Скрываем API-ключи и конфиги
-core/llm_client.py
 .env
+.env.*
+!.env.example
 # Скрываем системные файлы Python
 __pycache__/
 *.pyc
 # Скрываем логи
 history.log
 logs/
+.venv/
+dist/
+build/
+*.egg-info/
+.coverage
+htmlcov/
