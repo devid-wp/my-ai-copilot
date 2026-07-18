@@ -9,3 +9,4 @@
 - Added packaging, tests and CI configuration.
 - Added interactive `/provider`, `/model`, `/mode`, `/permissions` and `/status` commands.
 - Redesigned the terminal UI with rich panels, menus, status badges and command completion.
+- Added Lumi, an original star-mage terminal companion for session and tool feedback.

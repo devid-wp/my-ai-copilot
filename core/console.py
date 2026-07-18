@@ -37,6 +37,14 @@ SLASH_COMMANDS = [
     "/exit",
 ]
 
+PET_NAME = "Люми"
+PET_ART = """      ✦
+    .-^-.
+   / ◕ ◕ \\
+  │   ▿   │
+   \\  ~  /
+   /│___│\\"""
+
 
 class Console:
     def __init__(self) -> None:
@@ -65,6 +73,14 @@ class Console:
         details.add_column(ratio=1)
         details.add_column(justify="right")
         details.add_row(
+            Text("✦", style=PURPLE),
+            Text.assemble(
+                (PET_NAME, f"bold {GREEN}"),
+                ("  Готов исследовать этот проект вместе с тобой.", MUTED),
+            ),
+            Text("online", style=GREEN),
+        )
+        details.add_row(
             Text("●", style=CYAN),
             Text.assemble(
                 (provider.upper(), "bold white"),
@@ -74,11 +90,16 @@ class Console:
             Text(f" {mode} ", style=f"bold {mode_color} on {SURFACE}"),
         )
         details.add_row(Text("⌁", style=MUTED), Text(project, style=MUTED), Text("ready", style=GREEN))
+        mascot = Text(PET_ART, style=f"bold {GREEN}", justify="center")
+        layout = Table.grid(expand=True, padding=(0, 1))
+        layout.add_column(width=13, justify="center", vertical="middle")
+        layout.add_column(ratio=1, vertical="middle")
+        layout.add_row(mascot, details)
         title = Text.assemble((" CITADEX ", "bold white on #7c3aed"), ("  terminal coding agent ", MUTED))
         self.output.print()
         self.output.print(
             Panel(
-                details,
+                layout,
                 title=title,
                 title_align="left",
                 border_style=PURPLE_DARK,
@@ -137,6 +158,7 @@ class Console:
     def step(self, current: int, total: int, model: str) -> None:
         self.output.print(
             Text.assemble(
+                ("✦ ", GREEN),
                 (f"STEP {current}/{total}", f"bold {PURPLE}"),
                 ("  ·  ", MUTED),
                 (model, MUTED),
@@ -144,7 +166,9 @@ class Console:
         )
 
     def tool(self, name: str, detail: str) -> None:
-        self.output.print(Text.assemble(("◆ ", CYAN), (name, "bold white"), (f"  {detail}", MUTED)))
+        self.output.print(
+            Text.assemble(("✦ ", GREEN), ("◆ ", CYAN), (name, "bold white"), (f"  {detail}", MUTED))
+        )
 
     def tool_result(self, result: dict[str, Any]) -> None:
         if result.get("status") == "error" or "error" in result:
@@ -155,7 +179,11 @@ class Console:
     def confirm(self, action: str, detail: str) -> bool:
         body = Text.assemble((action, "bold white"), ("\n"), (detail, MUTED))
         self.output.print(
-            Panel(body, title=f"[bold {YELLOW}]Permission required[/bold {YELLOW}]", border_style=YELLOW)
+            Panel(
+                body,
+                title=f"[bold {YELLOW}]✦ {PET_NAME} спрашивает разрешение[/bold {YELLOW}]",
+                border_style=YELLOW,
+            )
         )
         answer = self._read("allow? [y/N] ", HTML("<brand>allow?</brand> <prompt>[y/N]</prompt> "))
         return answer.strip().lower() in {"y", "yes", "д", "да"}
@@ -166,14 +194,25 @@ class Console:
         return self.session.prompt(rich_prompt)
 
     def success(self, message: str) -> None:
-        self.output.print(Panel(Text(message, style=GREEN), border_style=GREEN, box=box.ROUNDED))
+        self.output.print(
+            Panel(
+                Text.assemble(("✦ ", f"bold {GREEN}"), (message, GREEN)),
+                border_style=GREEN,
+                box=box.ROUNDED,
+            )
+        )
 
     def warning(self, message: str) -> None:
         self.output.print(Panel(Text(message, style=YELLOW), border_style=YELLOW, box=box.ROUNDED))
 
     def error(self, message: str) -> None:
         self.output.print(
-            Panel(Text(message, style=RED), title="[bold]Error[/bold]", border_style=RED, box=box.ROUNDED)
+            Panel(
+                Text(message, style=RED),
+                title=f"[bold]✦ {PET_NAME} заметил ошибку[/bold]",
+                border_style=RED,
+                box=box.ROUNDED,
+            )
         )
 
     def help(self) -> None:
