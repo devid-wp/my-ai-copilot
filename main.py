@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,33 @@ from core.console import Console
 from core.context_manager import get_git_log, get_project_context
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
+
+PROVIDER_MODELS = {
+    "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
+    "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
+    "ollama": ["llama3.2", "qwen2.5-coder"],
+}
+
+
+@dataclass
+class SessionSettings:
+    provider: str = "nvidia"
+    model: str | None = None
+    agent: bool = False
+    auto_approve: bool = False
+
+    @property
+    def mode(self) -> str:
+        return "agent" if self.agent else "chat"
+
+    @property
+    def permissions(self) -> str:
+        return "auto" if self.auto_approve else "ask"
+
+    @property
+    def display_model(self) -> str:
+        return self.model or PROVIDER_MODELS[self.provider][0]
+
 
 load_dotenv()
 
@@ -39,6 +67,79 @@ def build_system_prompt(project_root: str, username: str, memory: AgentMemory) -
 
 def env(name: str, default: str) -> str:
     return os.getenv(name) or default
+
+
+def parse_slash(text: str) -> tuple[str, str] | None:
+    stripped = text.strip()
+    if not stripped.startswith("/"):
+        return None
+    command, _, value = stripped[1:].partition(" ")
+    return command.casefold(), value.strip()
+
+
+def handle_slash(
+    parsed: tuple[str, str],
+    settings: SessionSettings,
+    console: Console,
+    session: AgentMemory,
+    client: Any | None,
+) -> tuple[Any | None, bool]:
+    command, value = parsed
+    if command in {"exit", "quit"}:
+        return client, True
+    if command == "help":
+        console.help()
+        return client, False
+    if command == "status":
+        console.status(settings.provider, settings.display_model, settings.mode, settings.permissions)
+        return client, False
+    if command == "clear":
+        session.clear()
+        if client is not None:
+            client.reset_history()
+        console.success("История очищена")
+        return client, False
+    if command == "provider":
+        provider = value.casefold() if value else console.choose("Провайдер", list(PROVIDER_MODELS))
+        if provider not in PROVIDER_MODELS:
+            console.error(f"Неизвестный провайдер: {provider}")
+            return client, False
+        settings.provider = provider
+        settings.model = None
+        if provider == "ollama" and settings.agent:
+            settings.agent = False
+            console.warning("Ollama не поддерживает tools: режим переключён на chat.")
+        console.success(f"Провайдер: {provider}")
+        return None, False
+    if command == "model":
+        model = value or console.choose("Модель", PROVIDER_MODELS[settings.provider])
+        settings.model = model
+        console.success(f"Модель: {model}")
+        return None, False
+    if command == "mode":
+        mode = value.casefold() if value else console.choose("Режим", ["chat", "agent"])
+        if mode not in {"chat", "agent"}:
+            console.error("Используйте /mode chat или /mode agent")
+            return client, False
+        if mode == "agent" and settings.provider == "ollama":
+            console.error("Ollama пока не поддерживает native tool calls.")
+            return client, False
+        settings.agent = mode == "agent"
+        console.success(f"Режим: {mode}")
+        return client, False
+    if command == "permissions":
+        permissions = value.casefold() if value else console.choose("Подтверждения", ["ask", "auto"])
+        if permissions not in {"ask", "auto"}:
+            console.error("Используйте /permissions ask или /permissions auto")
+            return client, False
+        settings.auto_approve = permissions == "auto"
+        if settings.auto_approve:
+            console.warning("Автоподтверждение включено для текущей сессии.")
+        else:
+            console.success("Опасные действия требуют подтверждения")
+        return client, False
+    console.error(f"Неизвестная команда: /{command}. Используйте /help")
+    return client, False
 
 
 def create_client(provider: str, model: str | None, system_prompt: str):
@@ -161,27 +262,36 @@ def main(argv: list[str] | None = None) -> int:
     if not Path(project_root).is_dir():
         console.error(f"Папка проекта не найдена: {project_root}")
         return 2
-    if args.agent and args.provider == "ollama":
-        console.error("Ollama пока поддерживает только chat-режим: native tool calls недоступны.")
-        return 2
-
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
-    system_prompt = build_system_prompt(project_root, args.user, session)
-    try:
-        client = create_client(args.provider, args.model, system_prompt)
-    except Exception as exc:
-        console.error(str(exc))
-        return 2
-
-    console.header(args.provider, client.model_chat, project_root, args.agent or bool(args.oneshot))
-    if args.yes:
+    settings = SessionSettings(args.provider, args.model, args.agent, args.yes)
+    client = None
+    console.header(settings.provider, settings.display_model, project_root, settings.agent)
+    console.hint("/provider · /model · /mode · /permissions · /help")
+    if settings.auto_approve:
         console.warning("Автоподтверждение включено: агент может изменять файлы и запускать команды.")
 
     if args.oneshot:
-        if args.agent:
-            run_agent(client, args.oneshot, project_root, args.user, console, args.yes, args.max_steps)
-        else:
-            run_chat(client, args.oneshot, console)
+        try:
+            client = create_client(
+                settings.provider,
+                settings.model,
+                build_system_prompt(project_root, args.user, session),
+            )
+            if settings.agent:
+                run_agent(
+                    client,
+                    args.oneshot,
+                    project_root,
+                    args.user,
+                    console,
+                    settings.auto_approve,
+                    args.max_steps,
+                )
+            else:
+                run_chat(client, args.oneshot, console)
+        except Exception as exc:
+            console.error(str(exc))
+            return 2
         return 0
 
     while True:
@@ -190,23 +300,35 @@ def main(argv: list[str] | None = None) -> int:
         except (EOFError, KeyboardInterrupt):
             console.goodbye()
             return 0
-        command = prompt.strip().lower()
-        if command in {"exit", "quit", "q"}:
+        if prompt.strip().lower() in {"exit", "quit", "q"}:
             console.goodbye()
             return 0
-        if command == "!clear":
-            session.clear()
-            client.reset_history()
-            console.success("История очищена")
-            continue
-        if command == "!help":
-            console.help()
+        slash = parse_slash(prompt)
+        if slash is not None:
+            client, should_exit = handle_slash(slash, settings, console, session, client)
+            if should_exit:
+                console.goodbye()
+                return 0
             continue
         if not prompt.strip():
             continue
         try:
-            if args.agent:
-                run_agent(client, prompt, project_root, args.user, console, args.yes, args.max_steps)
+            if client is None:
+                client = create_client(
+                    settings.provider,
+                    settings.model,
+                    build_system_prompt(project_root, args.user, session),
+                )
+            if settings.agent:
+                run_agent(
+                    client,
+                    prompt,
+                    project_root,
+                    args.user,
+                    console,
+                    settings.auto_approve,
+                    args.max_steps,
+                )
             else:
                 run_chat(client, prompt, console)
         except KeyboardInterrupt:

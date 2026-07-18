@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style
 
@@ -23,10 +24,26 @@ RESET = "\033[0m"
 
 class Console:
     def __init__(self) -> None:
-        self.session: PromptSession[str] = PromptSession(
-            multiline=False,
-            style=Style.from_dict({"prompt": "ansicyan bold", "path": "ansibrightblack"}),
-        )
+        self.session: PromptSession[str] | None = None
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            self.session = PromptSession(
+                multiline=False,
+                completer=WordCompleter(
+                    [
+                        "/provider",
+                        "/model",
+                        "/mode",
+                        "/permissions",
+                        "/status",
+                        "/clear",
+                        "/help",
+                        "/exit",
+                    ],
+                    sentence=True,
+                ),
+                complete_while_typing=True,
+                style=Style.from_dict({"prompt": "ansicyan bold", "path": "ansibrightblack"}),
+            )
 
     def header(self, provider: str, model: str, project: str, agent: bool) -> None:
         width = min(88, max(54, self._width()))
@@ -41,7 +58,30 @@ class Console:
         print(f"  {DIM}{project}{RESET}\n")
 
     def prompt(self) -> str:
-        return self.session.prompt(HTML("<prompt>❯ </prompt>"))
+        return self._read("❯ ", HTML("<prompt>❯ </prompt>"))
+
+    def choose(self, title: str, options: list[str]) -> str:
+        print(f"\n  {BOLD}{title}{RESET}")
+        for index, option in enumerate(options, 1):
+            print(f"  {PURPLE}{index}{RESET}  {option}")
+        while True:
+            answer = self._read("  Select › ", HTML("<prompt>  Select › </prompt>")).strip()
+            if answer in options:
+                return answer
+            if answer.isdigit() and 1 <= int(answer) <= len(options):
+                return options[int(answer) - 1]
+            self.error("Введите номер или название из списка")
+
+    def hint(self, message: str) -> None:
+        print(f"  {DIM}{message}{RESET}\n")
+
+    def status(self, provider: str, model: str, mode: str, permissions: str) -> None:
+        print(f"""
+  {DIM}provider{RESET}     {provider}
+  {DIM}model{RESET}        {model}
+  {DIM}mode{RESET}         {mode}
+  {DIM}permissions{RESET}  {permissions}
+""")
 
     def stream(self, tokens: Iterable[str]) -> str:
         print(f"{PURPLE}┃{RESET} ", end="", flush=True)
@@ -68,8 +108,13 @@ class Console:
     def confirm(self, action: str, detail: str) -> bool:
         print(f"\n  {YELLOW}Approval required{RESET}")
         print(f"  {BOLD}{action}{RESET}: {detail}")
-        answer = self.session.prompt(HTML("<prompt>  Allow? [y/N] </prompt>"))
+        answer = self._read("  Allow? [y/N] ", HTML("<prompt>  Allow? [y/N] </prompt>"))
         return answer.strip().lower() in {"y", "yes", "д", "да"}
+
+    def _read(self, plain_prompt: str, rich_prompt: HTML) -> str:
+        if self.session is None:
+            return input(plain_prompt)
+        return self.session.prompt(rich_prompt)
 
     def success(self, message: str) -> None:
         print(f"{GREEN}✓ {message}{RESET}\n")
@@ -82,13 +127,18 @@ class Console:
 
     def help(self) -> None:
         print("""
-  !help       показать справку
-  !clear      очистить текущую историю
-  exit / q    выйти
+  /provider [name]       выбрать NVIDIA, Gemini или Ollama
+  /model [name]          выбрать модель текущего провайдера
+  /mode [chat|agent]     переключить чат и агентный режим
+  /permissions [ask|auto]
+                         настроить подтверждения действий
+  /status                показать настройки текущей сессии
+  /clear                 очистить историю
+  /help                  показать справку
+  /exit                  выйти
 
-  Режим агента включается флагом --agent.
-  Изменения файлов и команды требуют подтверждения.
-  --yes отключает подтверждения и предназначен только для доверенной автоматизации.
+  Можно вызвать /provider, /model, /mode и /permissions без аргумента —
+  Citadex покажет интерактивное меню. Флаги CLI нужны только для автоматизации.
 """)
 
     def goodbye(self) -> None:

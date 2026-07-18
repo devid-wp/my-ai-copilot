@@ -7,3 +7,4 @@
 - Added approval prompts and protected paths.
 - Removed shell-based command execution and legacy text actions.
 - Added packaging, tests and CI configuration.
+- Added interactive `/provider`, `/model`, `/mode`, `/permissions` and `/status` commands.
