@@ -15,7 +15,8 @@ def test_header_contains_pet_and_session_details(monkeypatch):
     console.header("nvidia", "test-model", "C:/project", agent=True)
 
     rendered = stream.getvalue()
-    assert "Люми" in rendered
+    assert "люми" in rendered
+    assert ".-^-." not in rendered
     assert "test-model" in rendered
     assert "AGENT" in rendered
     assert "C:/project" in rendered

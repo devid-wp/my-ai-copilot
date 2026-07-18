@@ -38,12 +38,6 @@ SLASH_COMMANDS = [
 ]
 
 PET_NAME = "Люми"
-PET_ART = """      ✦
-    .-^-.
-   / ◕ ◕ \\
-  │   ▿   │
-   \\  ~  /
-   /│___│\\"""
 
 
 class Console:
@@ -73,14 +67,6 @@ class Console:
         details.add_column(ratio=1)
         details.add_column(justify="right")
         details.add_row(
-            Text("✦", style=PURPLE),
-            Text.assemble(
-                (PET_NAME, f"bold {GREEN}"),
-                ("  Готов исследовать этот проект вместе с тобой.", MUTED),
-            ),
-            Text("online", style=GREEN),
-        )
-        details.add_row(
             Text("●", style=CYAN),
             Text.assemble(
                 (provider.upper(), "bold white"),
@@ -90,16 +76,16 @@ class Console:
             Text(f" {mode} ", style=f"bold {mode_color} on {SURFACE}"),
         )
         details.add_row(Text("⌁", style=MUTED), Text(project, style=MUTED), Text("ready", style=GREEN))
-        mascot = Text(PET_ART, style=f"bold {GREEN}", justify="center")
-        layout = Table.grid(expand=True, padding=(0, 1))
-        layout.add_column(width=13, justify="center", vertical="middle")
-        layout.add_column(ratio=1, vertical="middle")
-        layout.add_row(mascot, details)
-        title = Text.assemble((" CITADEX ", "bold white on #7c3aed"), ("  terminal coding agent ", MUTED))
+        title = Text.assemble(
+            (" CITADEX ", "bold white on #7c3aed"),
+            ("  ✦ ", GREEN),
+            (PET_NAME.lower(), f"bold {GREEN}"),
+            ("  terminal coding agent ", MUTED),
+        )
         self.output.print()
         self.output.print(
             Panel(
-                layout,
+                details,
                 title=title,
                 title_align="left",
                 border_style=PURPLE_DARK,
