@@ -16,6 +16,7 @@ def test_header_contains_pet_and_session_details(monkeypatch):
 
     rendered = stream.getvalue()
     assert "люми" in rendered
+    assert "(•ᴗ•)" in rendered
     assert ".-^-." not in rendered
     assert "test-model" in rendered
     assert "AGENT" in rendered

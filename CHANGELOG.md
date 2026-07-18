@@ -9,4 +9,4 @@
 - Added packaging, tests and CI configuration.
 - Added interactive `/provider`, `/model`, `/mode`, `/permissions` and `/status` commands.
 - Redesigned the terminal UI with rich panels, menus, status badges and command completion.
-- Added Lumi as a minimal terminal companion for session and tool feedback.
+- Added Lumi as a compact three-line terminal companion for session and tool feedback.
