@@ -93,6 +93,18 @@ class Console:
     def prompt(self) -> str:
         return self._read("citadex ❯ ", HTML("<brand>citadex</brand> <prompt>❯</prompt> "))
 
+    def secret(self, label: str) -> str:
+        """Read a secret without echoing it to the terminal."""
+        plain_prompt = f"{label} ❯ "
+        if self.session is None:
+            from getpass import getpass
+
+            return getpass(plain_prompt)
+        return self.session.prompt(
+            HTML(f"<brand>{label}</brand> <prompt>❯</prompt> "),
+            is_password=True,
+        )
+
     def choose(self, title: str, options: list[str]) -> str:
         menu = Table(box=box.SIMPLE, show_header=False, padding=(0, 1), border_style=MUTED)
         menu.add_column("number", justify="right", style=f"bold {PURPLE}", width=3)

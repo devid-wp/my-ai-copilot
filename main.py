@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from core.agent_executor import dispatch_function
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
+from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 
@@ -46,6 +47,7 @@ class SessionSettings:
 
 
 load_dotenv()
+load_credentials()
 
 if sys.platform == "win32":
     # Python launched from MSYS or an older console may inherit a legacy code page.
@@ -104,6 +106,18 @@ def handle_slash(
         if provider not in PROVIDER_MODELS:
             console.error(f"Неизвестный провайдер: {provider}")
             return client, False
+        environment_name = PROVIDER_API_KEYS.get(provider)
+        if environment_name and not os.getenv(environment_name):
+            api_key = console.secret(f"{provider.upper()} API key").strip()
+            if not api_key:
+                console.error("API-ключ не введён. Провайдер не изменён.")
+                return client, False
+            try:
+                save_api_key(provider, api_key)
+            except (OSError, ValueError) as exc:
+                console.error(f"Не удалось сохранить API-ключ: {exc}")
+                return client, False
+            console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
         settings.provider = provider
         settings.model = None
         if provider == "ollama" and settings.agent:
