@@ -182,7 +182,9 @@ class Console:
     def _read(self, plain_prompt: str, rich_prompt: HTML) -> str:
         if self.session is None:
             return input(plain_prompt)
-        return self.session.prompt(rich_prompt)
+        # PromptSession keeps per-call options for later prompts. Explicitly
+        # disable password mode after secret input so regular chat stays visible.
+        return self.session.prompt(rich_prompt, is_password=False)
 
     def success(self, message: str) -> None:
         self.output.print(

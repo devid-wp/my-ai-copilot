@@ -12,3 +12,4 @@
 - Added provider-neutral typed contracts for the tool-calling runtime.
 - Added a central tool registry with stable schemas and structured dispatch errors.
 - Added secure API-key setup when selecting a cloud provider interactively.
+- Fixed password masking remaining enabled after entering a provider API key.
