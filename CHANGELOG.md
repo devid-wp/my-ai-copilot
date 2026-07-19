@@ -10,3 +10,4 @@
 - Added interactive `/provider`, `/model`, `/mode`, `/permissions` and `/status` commands.
 - Redesigned the terminal UI with rich panels, menus, status badges and command completion.
 - Added provider-neutral typed contracts for the tool-calling runtime.
+- Added a central tool registry with stable schemas and structured dispatch errors.

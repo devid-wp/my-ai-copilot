@@ -1,0 +1,85 @@
+import pytest
+
+from core.tools import ToolCall, ToolDefinition, ToolRegistry, ToolRisk, ToolStatus
+
+
+@pytest.fixture
+def definition():
+    return ToolDefinition(
+        name="echo",
+        description="Return the supplied text.",
+        input_schema={
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+        risk=ToolRisk.READ_ONLY,
+    )
+
+
+def test_registry_preserves_registration_order_and_builds_schemas(definition):
+    registry = ToolRegistry()
+    registry.register(definition, lambda args: args)
+
+    assert registry.get("echo") == definition
+    assert registry.definitions() == (definition,)
+    assert registry.openai_schemas()[0]["function"]["name"] == "echo"
+
+
+def test_registry_rejects_duplicate_names(definition):
+    registry = ToolRegistry()
+    registry.register(definition, lambda args: args)
+
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register(definition, lambda args: args)
+
+
+def test_registry_executes_tool_without_mutating_call_arguments(definition):
+    registry = ToolRegistry()
+
+    def handler(args):
+        args["handled"] = True
+        return args
+
+    registry.register(definition, handler)
+    call = ToolCall(id="call_1", name="echo", arguments={"text": "hello"})
+
+    result = registry.execute(call)
+
+    assert result.status is ToolStatus.SUCCESS
+    assert result.content == {"text": "hello", "handled": True}
+    assert call.arguments == {"text": "hello"}
+
+
+def test_registry_returns_structured_unknown_tool_error():
+    result = ToolRegistry().execute(ToolCall(id="call_2", name="missing", arguments={}))
+
+    assert result.status is ToolStatus.ERROR
+    assert result.error is not None
+    assert result.error.code == "UNKNOWN_TOOL"
+
+
+def test_registry_converts_handler_exception_to_error(definition):
+    registry = ToolRegistry()
+
+    def fail(_args):
+        raise FileNotFoundError("missing.txt")
+
+    registry.register(definition, fail)
+    result = registry.execute(ToolCall(id="call_3", name="echo", arguments={"text": "x"}))
+
+    assert result.status is ToolStatus.ERROR
+    assert result.error is not None
+    assert result.error.code == "TOOL_EXECUTION_FAILED"
+    assert result.error.details == {"exception_type": "FileNotFoundError"}
+
+
+def test_registry_rejects_non_mapping_handler_result(definition):
+    registry = ToolRegistry()
+    registry.register(definition, lambda _args: "wrong")  # type: ignore[arg-type,return-value]
+
+    result = registry.execute(ToolCall(id="call_4", name="echo", arguments={"text": "x"}))
+
+    assert result.status is ToolStatus.ERROR
+    assert result.error is not None
+    assert result.error.details["exception_type"] == "TypeError"

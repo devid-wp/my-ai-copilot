@@ -12,6 +12,7 @@ from core.tools.models import (
     ToolRisk,
     ToolStatus,
 )
+from core.tools.registry import ToolHandler, ToolRegistry
 
 __all__ = [
     "AgentEvent",
@@ -21,6 +22,8 @@ __all__ = [
     "ToolCall",
     "ToolDefinition",
     "ToolError",
+    "ToolHandler",
+    "ToolRegistry",
     "ToolResult",
     "ToolRisk",
     "ToolStatus",
