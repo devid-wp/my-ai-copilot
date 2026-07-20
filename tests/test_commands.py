@@ -123,12 +123,11 @@ def test_provider_command_keeps_current_provider_when_key_cannot_be_saved(monkey
     assert client is not None
 
 
-def test_ollama_rejects_agent_mode():
+def test_ollama_allows_agent_mode():
     settings = SessionSettings(provider="ollama")
     console = FakeConsole()
     handle_slash(("mode", "agent"), settings, console, FakeSession(), None)
-    assert settings.agent is False
-    assert any(level == "error" for level, _ in console.messages)
+    assert settings.agent is True
 
 
 def test_permissions_command_changes_policy():

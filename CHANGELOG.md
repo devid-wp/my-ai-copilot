@@ -17,3 +17,4 @@
 - Added JSON Schema validation before any tool handler is executed.
 - Redesigned tool-call output with compact actions, safe previews and structured results.
 - Allowed replacing saved provider keys and rejected invalid NVIDIA key formats.
+- Enabled native Ollama tool calls and surfaced local API errors instead of empty replies.

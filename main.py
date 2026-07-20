@@ -132,9 +132,6 @@ def handle_slash(
                 console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
         settings.provider = provider
         settings.model = None
-        if provider == "ollama" and settings.agent:
-            settings.agent = False
-            console.warning("Ollama не поддерживает tools: режим переключён на chat.")
         console.success(f"Провайдер: {provider}")
         return None, False
     if command == "model":
@@ -146,9 +143,6 @@ def handle_slash(
         mode = value.casefold() if value else console.choose("Режим", ["chat", "agent"])
         if mode not in {"chat", "agent"}:
             console.error("Используйте /mode chat или /mode agent")
-            return client, False
-        if mode == "agent" and settings.provider == "ollama":
-            console.error("Ollama пока не поддерживает native tool calls.")
             return client, False
         settings.agent = mode == "agent"
         console.success(f"Режим: {mode}")

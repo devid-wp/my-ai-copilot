@@ -5,6 +5,10 @@ from typing import Any
 
 import httpx
 
+from core.functions import FUNCTION_DEFINITIONS
+
+TOOLS = [{"type": "function", "function": definition} for definition in FUNCTION_DEFINITIONS]
+
 
 class OllamaClient:
     """Клиент для локального Ollama — такой же интерфейс как NVIDIAClient."""
@@ -56,21 +60,12 @@ class OllamaClient:
         full_response: list[str] = []
 
         if messages is not None:
-            # Строим из переданной истории
-            ollama_messages = []
-            for m in messages:
-                role = m.get("role", "user")
-                content = m.get("content", "")
-                if role == "system":
-                    continue  # system передаётся отдельно
-                if role == "tool":
-                    ollama_messages.append({"role": "user", "content": f"[Tool result]: {content}"})
-                elif role == "assistant":
-                    ollama_messages.append({"role": "assistant", "content": content})
-                else:
-                    ollama_messages.append({"role": "user", "content": content})
+            ollama_messages = self._clean_messages(messages)
         else:
-            ollama_messages = list(self.history)
+            ollama_messages = [
+                {"role": "system", "content": self.system_prompt},
+                *self.history,
+            ]
             if prompt:
                 ollama_messages.append({"role": "user", "content": prompt})
 
@@ -80,10 +75,11 @@ class OllamaClient:
         payload = {
             "model": selected,
             "messages": ollama_messages,
-            "system": self.system_prompt,
             "stream": True,
             "options": {"temperature": 0.5, "num_predict": 4096},
         }
+        if external_messages:
+            payload["tools"] = TOOLS
 
         try:
             with httpx.stream(
@@ -92,23 +88,48 @@ class OllamaClient:
                 json=payload,
                 timeout=120,
             ) as response:
+                response.raise_for_status()
                 for line in response.iter_lines():
                     if not line:
                         continue
                     try:
                         chunk = json.loads(line)
-                        token = chunk.get("message", {}).get("content", "")
+                        message = chunk.get("message", {})
+                        token = message.get("content", "")
                         if token:
                             full_response.append(token)
                             yield token
+                        for raw_call in message.get("tool_calls") or []:
+                            function = raw_call.get("function") or {}
+                            arguments = function.get("arguments") or {}
+                            if isinstance(arguments, str):
+                                try:
+                                    arguments = json.loads(arguments)
+                                except json.JSONDecodeError:
+                                    arguments = {}
+                            self._last_tool_calls.append(
+                                {
+                                    "id": raw_call.get("id")
+                                    or f"ollama_call_{len(self._last_tool_calls) + 1}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": str(function.get("name") or ""),
+                                        "arguments": json.dumps(arguments, ensure_ascii=False),
+                                    },
+                                }
+                            )
                         if chunk.get("done"):
                             break
-                    except json.JSONDecodeError:
+                    except (AttributeError, json.JSONDecodeError):
                         continue
         except httpx.ConnectError:
-            yield "\n[❌ Ollama недоступен. Запустите: ollama serve]"
-        except Exception as e:
-            yield f"\n[❌ Ошибка Ollama: {e}]"
+            raise RuntimeError("Ollama недоступен. Запустите локальный сервер Ollama.") from None
+        except httpx.HTTPStatusError as exc:
+            try:
+                detail = exc.response.json().get("error", exc.response.text)
+            except (AttributeError, json.JSONDecodeError):
+                detail = exc.response.text
+            raise RuntimeError(f"Ollama HTTP {exc.response.status_code}: {detail}") from exc
 
         if not external_messages:
             if prompt:
@@ -117,11 +138,44 @@ class OllamaClient:
             if len(self.history) > 20:
                 self.history = self.history[-20:]
 
-    def get_last_tool_calls(self) -> list:
-        return []  # Ollama не поддерживает tool-calling в базовом варианте
+    def get_last_tool_calls(self) -> list[dict[str, Any]]:
+        return self._last_tool_calls
 
     def reset_history(self) -> None:
         self.history.clear()
 
     def ask(self, prompt: str, context: str = "") -> str:
         return "".join(self.ask_stream(prompt, context))
+
+    @staticmethod
+    def _clean_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        clean: list[dict[str, Any]] = []
+        for message in messages:
+            role = str(message.get("role", "user"))
+            item: dict[str, Any] = {
+                "role": role,
+                "content": str(message.get("content") or ""),
+            }
+            if role == "assistant" and message.get("tool_calls"):
+                calls: list[dict[str, Any]] = []
+                for raw_call in message["tool_calls"]:
+                    function = raw_call.get("function") or {}
+                    arguments = function.get("arguments") or {}
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
+                    calls.append(
+                        {
+                            "function": {
+                                "name": str(function.get("name") or ""),
+                                "arguments": arguments,
+                            }
+                        }
+                    )
+                item["tool_calls"] = calls
+            if role == "tool" and message.get("name"):
+                item["tool_name"] = str(message["name"])
+            clean.append(item)
+        return clean
