@@ -1,5 +1,6 @@
 """Typed contracts and registry primitives for Citadex tools."""
 
+from core.tools.builtin import BUILTIN_TOOL_DEFINITIONS
 from core.tools.models import (
     AgentEvent,
     AgentEventType,
@@ -18,6 +19,7 @@ __all__ = [
     "AgentEvent",
     "AgentEventType",
     "AgentLimits",
+    "BUILTIN_TOOL_DEFINITIONS",
     "ProviderCapabilities",
     "ToolCall",
     "ToolDefinition",

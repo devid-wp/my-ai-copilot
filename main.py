@@ -12,12 +12,13 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from core.agent_executor import dispatch_function
+from core.agent_executor import create_tool_registry, tool_result_payload
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
 from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
+from core.tools import ToolCall
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -213,6 +214,8 @@ def run_agent(
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
+    tool_registry = create_tool_registry(project_root, approve)
+
     for step in range(1, max_steps + 1):
         client.system_prompt = build_system_prompt(project_root, username, memory)
         if memory.history and memory.history[0].get("role") == "system":
@@ -239,7 +242,14 @@ def run_agent(
                 result = {"status": "error", "error": f"Некорректные аргументы инструмента: {exc}"}
             else:
                 console.tool(name, arguments.get("path") or arguments.get("command") or "")
-                result = dispatch_function(name, arguments, project_root, approve=approve)
+                typed_result = tool_registry.execute(
+                    ToolCall(
+                        id=tool_call.get("id", "call_0"),
+                        name=name,
+                        arguments=arguments,
+                    )
+                )
+                result = tool_result_payload(typed_result)
             memory.add(
                 "tool",
                 json.dumps(result, ensure_ascii=False),

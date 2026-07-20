@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,13 @@ from core.security import (
     ensure_path_safe,
     parse_command,
     require_approval,
+)
+from core.tools import (
+    BUILTIN_TOOL_DEFINITIONS,
+    ToolCall,
+    ToolRegistry,
+    ToolResult,
+    ToolStatus,
 )
 
 MAX_READ_BYTES = 50 * 1024
@@ -237,17 +245,45 @@ FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
 }
 
 
+def create_tool_registry(
+    project_root: str,
+    approve: ApprovalCallback | None = None,
+) -> ToolRegistry:
+    """Build the runtime registry with handlers bound to one project."""
+    registry = ToolRegistry()
+    for definition in BUILTIN_TOOL_DEFINITIONS:
+        handler = FUNCTION_MAP[definition.name]
+        registry.register(
+            definition,
+            partial(handler, project_root=project_root, approve=approve),
+        )
+    return registry
+
+
+def tool_result_payload(result: ToolResult) -> dict[str, Any]:
+    """Convert a typed result to the legacy provider message payload."""
+    if result.status is ToolStatus.SUCCESS:
+        return result.content
+    assert result.error is not None
+    return {
+        "status": result.status.value,
+        "error": result.error.message,
+        "code": result.error.code,
+    }
+
+
 def dispatch_function(
     name: str,
     args: dict[str, Any],
     project_root: str,
     approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
-    function = FUNCTION_MAP.get(name)
-    if function is None:
+    if name not in FUNCTION_MAP:
         raise ValueError(f"Unsupported function: {name}")
-    try:
-        return function(args, project_root, approve)
-    except Exception as exc:
-        _setup_logger(project_root).warning("%s denied or failed: %s", name, exc)
-        return {"status": "error", "error": str(exc)}
+    result = create_tool_registry(project_root, approve).execute(
+        ToolCall(id="legacy_call", name=name, arguments=args)
+    )
+    if result.status is not ToolStatus.SUCCESS:
+        assert result.error is not None
+        _setup_logger(project_root).warning("%s denied or failed: %s", name, result.error.message)
+    return tool_result_payload(result)

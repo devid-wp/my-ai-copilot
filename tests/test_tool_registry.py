@@ -1,5 +1,6 @@
 import pytest
 
+from core.agent_executor import create_tool_registry
 from core.tools import ToolCall, ToolDefinition, ToolRegistry, ToolRisk, ToolStatus
 
 
@@ -83,3 +84,30 @@ def test_registry_rejects_non_mapping_handler_result(definition):
     assert result.status is ToolStatus.ERROR
     assert result.error is not None
     assert result.error.details["exception_type"] == "TypeError"
+
+
+def test_builtin_registry_contains_every_runtime_tool(tmp_path):
+    registry = create_tool_registry(str(tmp_path))
+
+    assert {definition.name for definition in registry.definitions()} == {
+        "create_file",
+        "edit_file",
+        "delete_file",
+        "make_directory",
+        "execute_cmd",
+        "list_directory",
+        "read_file",
+        "search_in_files",
+    }
+
+
+def test_builtin_registry_executes_bound_read_tool(tmp_path):
+    (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
+    registry = create_tool_registry(str(tmp_path))
+
+    result = registry.execute(
+        ToolCall(id="call_read", name="read_file", arguments={"path": "hello.txt"})
+    )
+
+    assert result.status is ToolStatus.SUCCESS
+    assert result.content["content"] == "hello"
