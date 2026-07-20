@@ -40,3 +40,46 @@ def test_regular_prompt_disables_password_mode_after_secret(monkeypatch):
     console.prompt()
 
     assert session.password_modes == [True, False]
+
+
+def test_tool_call_rendering_is_compact_and_hides_file_content(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=120)
+
+    console.tool(
+        "create_file",
+        {"path": "src/example.py", "content": "super secret content"},
+    )
+    console.tool_result(
+        {"status": "created", "path": "C:/project/src/example.py", "bytes": 20}
+    )
+
+    rendered = stream.getvalue()
+    assert "WRITE" in rendered
+    assert "create_file" in rendered
+    assert "src/example.py" in rendered
+    assert "20 B" in rendered
+    assert "super secret content" not in rendered
+
+
+def test_tool_error_rendering_includes_structured_code(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=120)
+
+    console.tool_result(
+        {
+            "status": "error",
+            "code": "INVALID_ARGUMENTS",
+            "error": "'path' is required",
+        }
+    )
+
+    rendered = stream.getvalue()
+    assert "INVALID_ARGUMENTS" in rendered
+    assert "'path' is required" in rendered

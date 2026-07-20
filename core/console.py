@@ -26,6 +26,17 @@ RED = "#fb7185"
 MUTED = "#71717a"
 SURFACE = "#18181b"
 
+TOOL_ACTIONS = {
+    "create_file": "WRITE",
+    "edit_file": "EDIT",
+    "delete_file": "DELETE",
+    "make_directory": "MKDIR",
+    "execute_cmd": "RUN",
+    "list_directory": "LIST",
+    "read_file": "READ",
+    "search_in_files": "SEARCH",
+}
+
 SLASH_COMMANDS = [
     "/provider",
     "/model",
@@ -158,14 +169,80 @@ class Console:
             )
         )
 
-    def tool(self, name: str, detail: str) -> None:
-        self.output.print(Text.assemble(("◆ ", CYAN), (name, "bold white"), (f"  {detail}", MUTED)))
+    def tool(self, name: str, arguments: dict[str, Any]) -> None:
+        action = TOOL_ACTIONS.get(name, "TOOL")
+        detail = self._tool_detail(name, arguments)
+        line = Text.assemble(
+            ("◆ ", CYAN),
+            (action, f"bold {CYAN}"),
+            ("  ", MUTED),
+            (name, "bold white"),
+        )
+        if detail:
+            line.append("  ·  ", style=MUTED)
+            line.append(detail, style=MUTED)
+        self.output.print(line)
 
     def tool_result(self, result: dict[str, Any]) -> None:
         if result.get("status") == "error" or "error" in result:
-            self.error(str(result.get("error", "unknown error")))
-        else:
-            self.output.print(Text.assemble(("  ✓ ", GREEN), (str(result.get("status", "ok")), MUTED)))
+            self.output.print(
+                Text.assemble(
+                    ("  ✕ ", RED),
+                    (str(result.get("code", "ERROR")), f"bold {RED}"),
+                    ("  ·  ", MUTED),
+                    (self._shorten(result.get("error", "unknown error")), MUTED),
+                )
+            )
+            return
+
+        status = str(result.get("status", "completed")).upper()
+        details = self._result_details(result)
+        color = YELLOW if result.get("returncode") not in {None, 0} else GREEN
+        line = Text.assemble(("  ✓ ", color), (status, f"bold {color}"))
+        if details:
+            line.append("  ·  ", style=MUTED)
+            line.append("  ·  ".join(details), style=MUTED)
+        self.output.print(line)
+
+    @classmethod
+    def _tool_detail(cls, name: str, arguments: dict[str, Any]) -> str:
+        path = cls._shorten(arguments.get("path", ""))
+        if name == "execute_cmd":
+            return cls._shorten(arguments.get("command", ""))
+        if name == "search_in_files":
+            pattern = cls._shorten(arguments.get("pattern", ""), 60)
+            return f'"{pattern}" in {path or "."}'
+        if name == "create_file":
+            size = len(str(arguments.get("content", "")).encode("utf-8"))
+            return f"{path}  ·  {size} B"
+        if name == "edit_file":
+            patches = len(arguments.get("patches") or [])
+            return f"{path}  ·  {patches} patch(es)"
+        return path
+
+    @classmethod
+    def _result_details(cls, result: dict[str, Any]) -> list[str]:
+        details: list[str] = []
+        if result.get("path"):
+            details.append(cls._shorten(result["path"]))
+        if "bytes" in result:
+            details.append(f"{result['bytes']} B")
+        if "patches" in result:
+            details.append(f"{result['patches']} patch(es)")
+        if "count" in result:
+            details.append(f"{result['count']} match(es)")
+        if isinstance(result.get("entries"), list):
+            details.append(f"{len(result['entries'])} item(s)")
+        if "returncode" in result:
+            details.append(f"exit {result['returncode']}")
+        if result.get("truncated"):
+            details.append("truncated")
+        return details
+
+    @staticmethod
+    def _shorten(value: Any, limit: int = 100) -> str:
+        text = str(value).replace("\r", "").replace("\n", " ↵ ")
+        return text if len(text) <= limit else f"{text[: limit - 1]}…"
 
     def confirm(self, action: str, detail: str) -> bool:
         body = Text.assemble((action, "bold white"), ("\n"), (detail, MUTED))

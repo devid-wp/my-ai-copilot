@@ -241,7 +241,7 @@ def run_agent(
             except json.JSONDecodeError as exc:
                 result = {"status": "error", "error": f"Некорректные аргументы инструмента: {exc}"}
             else:
-                console.tool(name, arguments.get("path") or arguments.get("command") or "")
+                console.tool(name, arguments)
                 typed_result = tool_registry.execute(
                     ToolCall(
                         id=tool_call.get("id", "call_0"),
