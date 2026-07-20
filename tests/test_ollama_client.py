@@ -110,15 +110,23 @@ def test_tool_history_is_converted_to_ollama_format():
 
 def test_http_error_is_not_silently_swallowed(monkeypatch):
     request = httpx.Request("POST", "http://localhost:11434/api/chat")
-    failed_response = httpx.Response(404, request=request, json={"error": "model not found"})
+    failed_response = httpx.Response(
+        404,
+        request=request,
+        headers={"content-type": "application/json"},
+        stream=httpx.ByteStream(b'{"error":"model not found"}'),
+    )
 
-    class FailedStreamResponse(FakeStreamResponse):
-        def raise_for_status(self):
-            raise httpx.HTTPStatusError("not found", request=request, response=failed_response)
+    class FailedStreamContext:
+        def __enter__(self):
+            return failed_response
+
+        def __exit__(self, *_args):
+            failed_response.close()
 
     monkeypatch.setattr(
         "core.ollama_client.httpx.stream",
-        lambda *_args, **_kwargs: FailedStreamResponse([]),
+        lambda *_args, **_kwargs: FailedStreamContext(),
     )
     client = OllamaClient("system", model_chat="missing")
 

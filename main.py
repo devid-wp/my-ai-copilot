@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,22 @@ def env(name: str, default: str) -> str:
     return os.getenv(name) or default
 
 
+def provider_models(provider: str) -> list[str]:
+    """Return configured cloud models or models installed in local Ollama."""
+    if provider != "ollama":
+        return PROVIDER_MODELS[provider]
+
+    from core.ollama_client import OllamaClient
+
+    models = OllamaClient(
+        "",
+        base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
+    ).list_models()
+    if not models:
+        raise RuntimeError("Ollama не вернул ни одной установленной модели.")
+    return models
+
+
 def parse_slash(text: str) -> tuple[str, str] | None:
     stripped = text.strip()
     if not stripped.startswith("/"):
@@ -132,10 +149,23 @@ def handle_slash(
                 console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
         settings.provider = provider
         settings.model = None
+        if provider == "ollama":
+            try:
+                settings.model = provider_models(provider)[0]
+            except RuntimeError as exc:
+                console.warning(str(exc))
         console.success(f"Провайдер: {provider}")
         return None, False
     if command == "model":
-        model = value or console.choose("Модель", PROVIDER_MODELS[settings.provider])
+        if value:
+            model = value
+        else:
+            try:
+                models = provider_models(settings.provider)
+            except RuntimeError as exc:
+                console.error(str(exc))
+                return client, False
+            model = console.choose("Модель", models)
         settings.model = model
         console.success(f"Модель: {model}")
         return None, False
@@ -293,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
     settings = SessionSettings(args.provider, args.model, args.agent, args.yes)
+    if settings.provider == "ollama" and settings.model is None:
+        with suppress(RuntimeError):
+            settings.model = provider_models("ollama")[0]
     client = None
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
     console.hint("/provider · /model · /mode · /permissions · /help")

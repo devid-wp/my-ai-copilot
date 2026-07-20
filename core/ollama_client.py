@@ -88,7 +88,13 @@ class OllamaClient:
                 json=payload,
                 timeout=120,
             ) as response:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError:
+                    # Streaming responses do not preload their body. Read it
+                    # before building the user-facing error below.
+                    response.read()
+                    raise
                 for line in response.iter_lines():
                     if not line:
                         continue

@@ -45,11 +45,27 @@ def test_provider_command_resets_model_and_client(monkeypatch):
     assert "оставить сохранённый" in console.secret_prompts[0]
 
 
-def test_provider_command_can_use_interactive_choice():
+def test_provider_command_can_use_interactive_choice(monkeypatch):
+    monkeypatch.setattr("main.provider_models", lambda _provider: ["qwen2.5:3b"])
     settings = SessionSettings()
     console = FakeConsole(choice="ollama")
     handle_slash(("provider", ""), settings, console, FakeSession(), None)
     assert settings.provider == "ollama"
+    assert settings.model == "qwen2.5:3b"
+
+
+def test_ollama_model_menu_uses_installed_models(monkeypatch):
+    monkeypatch.setattr(
+        "main.provider_models",
+        lambda _provider: ["qwen2.5:3b", "qwen2.5-coder:1.5b"],
+    )
+    settings = SessionSettings(provider="ollama")
+    console = FakeConsole(choice="qwen2.5-coder:1.5b")
+
+    client, _ = handle_slash(("model", ""), settings, console, FakeSession(), object())
+
+    assert settings.model == "qwen2.5-coder:1.5b"
+    assert client is None
 
 
 def test_provider_command_prompts_for_missing_api_key(monkeypatch):
