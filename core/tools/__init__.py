@@ -13,6 +13,12 @@ from core.tools.models import (
     ToolRisk,
     ToolStatus,
 )
+from core.tools.permissions import (
+    PermissionCallback,
+    PermissionMode,
+    PermissionPolicy,
+    PermissionRequest,
+)
 from core.tools.registry import ToolHandler, ToolRegistry
 
 __all__ = [
@@ -20,6 +26,10 @@ __all__ = [
     "AgentEventType",
     "AgentLimits",
     "BUILTIN_TOOL_DEFINITIONS",
+    "PermissionCallback",
+    "PermissionMode",
+    "PermissionPolicy",
+    "PermissionRequest",
     "ProviderCapabilities",
     "ToolCall",
     "ToolDefinition",

@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
 from core.tools.models import ToolCall, ToolDefinition, ToolError, ToolResult, ToolStatus
+from core.tools.permissions import PermissionCallback, PermissionPolicy
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -17,10 +18,16 @@ ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 class ToolRegistry:
     """Own tool definitions and dispatch calls to their handlers."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        permission_policy: PermissionPolicy | None = None,
+        permission_callback: PermissionCallback | None = None,
+    ) -> None:
         self._definitions: dict[str, ToolDefinition] = {}
         self._handlers: dict[str, ToolHandler] = {}
         self._validators: dict[str, Draft202012Validator] = {}
+        self._permission_policy = permission_policy
+        self._permission_callback = permission_callback
 
     def register(self, definition: ToolDefinition, handler: ToolHandler) -> None:
         """Register one tool, rejecting ambiguous duplicate names."""
@@ -77,6 +84,21 @@ class ToolRegistry:
                     },
                 ),
             )
+
+        definition = self._definitions[call.name]
+        if self._permission_policy is not None:
+            permission_error = self._permission_policy.authorize(
+                definition,
+                call,
+                self._permission_callback,
+            )
+            if permission_error is not None:
+                return ToolResult(
+                    call_id=call.id,
+                    name=call.name,
+                    status=ToolStatus.DENIED,
+                    error=permission_error,
+                )
 
         started = perf_counter()
         try:

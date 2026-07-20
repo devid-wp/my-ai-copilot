@@ -249,7 +249,7 @@ def run_agent(
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
-    tool_registry = create_tool_registry(project_root, approve)
+    tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
 
     for step in range(1, max_steps + 1):
         client.system_prompt = build_system_prompt(project_root, username, memory)

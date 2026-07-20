@@ -157,7 +157,8 @@ class TestExecuteCmd:
 
     def test_action_without_approval_is_denied(self, tmp_project):
         result = dispatch_function("create_file", {"path": "denied.txt", "content": "x"}, tmp_project)
-        assert result["status"] == "error"
+        assert result["status"] == "denied"
+        assert result["code"] == "PERMISSION_DENIED"
         assert not os.path.exists(os.path.join(tmp_project, "denied.txt"))
 
     def test_protected_env_is_denied(self, tmp_project):

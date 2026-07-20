@@ -16,10 +16,12 @@ from core.security import (
     ensure_mutation_safe,
     ensure_path_safe,
     parse_command,
-    require_approval,
 )
 from core.tools import (
     BUILTIN_TOOL_DEFINITIONS,
+    PermissionMode,
+    PermissionPolicy,
+    PermissionRequest,
     ToolCall,
     ToolRegistry,
     ToolResult,
@@ -38,18 +40,12 @@ def _target(project_root: str, raw_path: str, *, mutation: bool = False) -> Path
     return validator(candidate, root)
 
 
-def _approved(callback: ApprovalCallback | None, action: str, detail: str) -> None:
-    require_approval(callback, action, detail)
-
-
 def create_file(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
     exists = path.exists()
-    _approved(approve, "overwrite file" if exists else "create file", str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
     content = str(args.get("content", ""))
     temporary = path.with_name(f".{path.name}.citadex.tmp")
@@ -66,7 +62,6 @@ def create_file(
 def edit_file(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
     if not path.is_file():
@@ -88,7 +83,6 @@ def edit_file(
         _, earlier_end, _ = ordered[index + 1]
         if earlier_end > later_start:
             raise ValueError("Overlapping patches are not allowed.")
-    _approved(approve, "edit file", f"{path} ({len(ordered)} patch(es))")
     for start, end, replacement in ordered:
         lines[start - 1 : end - 1] = [replacement]
     temporary = path.with_name(f".{path.name}.citadex.tmp")
@@ -101,13 +95,11 @@ def edit_file(
 def delete_file(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {args['path']}")
     action = "delete directory" if path.is_dir() else "delete file"
-    _approved(approve, action, str(path))
     if path.is_dir():
         shutil.rmtree(path)
     else:
@@ -119,10 +111,8 @@ def delete_file(
 def make_directory(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
-    _approved(approve, "create directory", str(path))
     path.mkdir(parents=True, exist_ok=True)
     _setup_logger(project_root).info("make_directory %s", path)
     return {"status": "directory_created", "path": str(path)}
@@ -131,11 +121,9 @@ def make_directory(
 def execute_cmd(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     command = str(args["command"])
     argv = parse_command(command)
-    _approved(approve, "execute command", command)
     try:
         result = subprocess.run(
             argv,
@@ -165,7 +153,6 @@ def execute_cmd(
 def list_directory(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args.get("path", "")))
     if not path.is_dir():
@@ -180,7 +167,6 @@ def list_directory(
 def read_file(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]))
     if not path.is_file():
@@ -197,7 +183,6 @@ def read_file(
 def search_in_files(
     args: dict[str, Any],
     project_root: str,
-    approve: ApprovalCallback | None = None,
 ) -> dict[str, Any]:
     root = _target(project_root, str(args.get("path", "")))
     pattern = str(args["pattern"]).casefold()
@@ -248,14 +233,20 @@ FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
 def create_tool_registry(
     project_root: str,
     approve: ApprovalCallback | None = None,
+    *,
+    auto_approve: bool = False,
 ) -> ToolRegistry:
     """Build the runtime registry with handlers bound to one project."""
-    registry = ToolRegistry()
+    def request_approval(request: PermissionRequest) -> bool:
+        return approve(request.action, request.detail) if approve is not None else False
+
+    policy = PermissionPolicy(PermissionMode.AUTO if auto_approve else PermissionMode.ASK)
+    registry = ToolRegistry(policy, request_approval)
     for definition in BUILTIN_TOOL_DEFINITIONS:
         handler = FUNCTION_MAP[definition.name]
         registry.register(
             definition,
-            partial(handler, project_root=project_root, approve=approve),
+            partial(handler, project_root=project_root),
         )
     return registry
 
