@@ -14,3 +14,4 @@
 - Added secure API-key setup when selecting a cloud provider interactively.
 - Fixed password masking remaining enabled after entering a provider API key.
 - Migrated built-in tool definitions and runtime dispatch to the central registry.
+- Added JSON Schema validation before any tool handler is executed.

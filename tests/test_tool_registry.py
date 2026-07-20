@@ -35,6 +35,18 @@ def test_registry_rejects_duplicate_names(definition):
         registry.register(definition, lambda args: args)
 
 
+def test_registry_rejects_invalid_definition_schema():
+    definition = ToolDefinition(
+        name="broken",
+        description="Broken schema.",
+        input_schema={"type": "object", "required": "path"},
+        risk=ToolRisk.READ_ONLY,
+    )
+
+    with pytest.raises(ValueError, match="Invalid JSON Schema"):
+        ToolRegistry().register(definition, lambda args: args)
+
+
 def test_registry_executes_tool_without_mutating_call_arguments(definition):
     registry = ToolRegistry()
 
@@ -58,6 +70,52 @@ def test_registry_returns_structured_unknown_tool_error():
     assert result.status is ToolStatus.ERROR
     assert result.error is not None
     assert result.error.code == "UNKNOWN_TOOL"
+
+
+def test_registry_rejects_missing_required_argument_before_handler(definition):
+    calls: list[dict] = []
+    registry = ToolRegistry()
+    registry.register(definition, lambda args: calls.append(args) or args)
+
+    result = registry.execute(ToolCall(id="call_invalid", name="echo", arguments={}))
+
+    assert result.status is ToolStatus.ERROR
+    assert result.error is not None
+    assert result.error.code == "INVALID_ARGUMENTS"
+    assert result.error.details["path"] == "$"
+    assert calls == []
+
+
+def test_registry_reports_nested_validation_path():
+    definition = ToolDefinition(
+        name="patch",
+        description="Apply a patch.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "patches": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"line": {"type": "integer"}},
+                        "required": ["line"],
+                    },
+                }
+            },
+            "required": ["patches"],
+        },
+        risk=ToolRisk.PROJECT_WRITE,
+    )
+    registry = ToolRegistry()
+    registry.register(definition, lambda args: args)
+
+    result = registry.execute(
+        ToolCall(id="call_nested", name="patch", arguments={"patches": [{"line": "one"}]})
+    )
+
+    assert result.error is not None
+    assert result.error.code == "INVALID_ARGUMENTS"
+    assert result.error.details["path"] == "$.patches.0.line"
 
 
 def test_registry_converts_handler_exception_to_error(definition):
