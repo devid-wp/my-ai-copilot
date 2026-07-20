@@ -5,12 +5,14 @@ class FakeConsole:
     def __init__(self, choice: str = "", secret: str = "") -> None:
         self.choice = choice
         self.secret_value = secret
+        self.secret_prompts: list[str] = []
         self.messages: list[tuple[str, str]] = []
 
     def choose(self, _title: str, _options: list[str]) -> str:
         return self.choice
 
-    def secret(self, _label: str) -> str:
+    def secret(self, label: str) -> str:
+        self.secret_prompts.append(label)
         return self.secret_value
 
     def __getattr__(self, name: str):
@@ -40,6 +42,7 @@ def test_provider_command_resets_model_and_client(monkeypatch):
     assert should_exit is False
     assert settings.provider == "gemini"
     assert settings.model is None
+    assert "оставить сохранённый" in console.secret_prompts[0]
 
 
 def test_provider_command_can_use_interactive_choice():
@@ -62,6 +65,34 @@ def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     assert saved == [("gemini", "secret-value")]
     assert settings.provider == "gemini"
     assert client is None
+
+
+def test_provider_command_can_replace_saved_api_key(monkeypatch):
+    saved: list[tuple[str, str]] = []
+    monkeypatch.setenv("GEMINI_API_KEY", "old-key")
+    monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
+    settings = SessionSettings(provider="nvidia")
+
+    handle_slash(
+        ("provider", "gemini"), settings, FakeConsole(secret="new-key"), FakeSession(), object()
+    )
+
+    assert saved == [("gemini", "new-key")]
+    assert settings.provider == "gemini"
+
+
+def test_provider_command_rejects_invalid_nvidia_key(monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    settings = SessionSettings(provider="gemini")
+    console = FakeConsole(secret="wrong-key")
+
+    client, _ = handle_slash(
+        ("provider", "nvidia"), settings, console, FakeSession(), object()
+    )
+
+    assert settings.provider == "gemini"
+    assert client is not None
+    assert any("nvapi-" in message for level, message in console.messages if level == "error")
 
 
 def test_provider_command_keeps_current_provider_when_key_is_empty(monkeypatch):

@@ -16,3 +16,4 @@
 - Migrated built-in tool definitions and runtime dispatch to the central registry.
 - Added JSON Schema validation before any tool handler is executed.
 - Redesigned tool-call output with compact actions, safe previews and structured results.
+- Allowed replacing saved provider keys and rejected invalid NVIDIA key formats.

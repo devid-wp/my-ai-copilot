@@ -32,14 +32,25 @@ def load_credentials(path: Path | None = None) -> None:
         load_dotenv(credential_file, override=False)
 
 
+def validate_api_key(provider: str, api_key: str) -> str:
+    """Validate a provider key without exposing it in an error message."""
+    normalized_provider = provider.casefold()
+    if normalized_provider not in PROVIDER_API_KEYS:
+        raise ValueError(f"Provider does not use an API key: {provider}")
+    value = api_key.strip()
+    if not value:
+        raise ValueError("API-ключ не может быть пустым.")
+    if normalized_provider == "nvidia" and not value.startswith("nvapi-"):
+        raise ValueError("NVIDIA API-ключ должен начинаться с nvapi-.")
+    return value
+
+
 def save_api_key(provider: str, api_key: str, path: Path | None = None) -> Path:
     """Persist one provider key and expose it to the current process."""
     environment_name = PROVIDER_API_KEYS.get(provider.casefold())
     if environment_name is None:
         raise ValueError(f"Provider does not use an API key: {provider}")
-    value = api_key.strip()
-    if not value:
-        raise ValueError("API key cannot be empty.")
+    value = validate_api_key(provider, api_key)
 
     credential_file = path or credentials_path()
     credential_file.parent.mkdir(parents=True, exist_ok=True)
@@ -51,4 +62,10 @@ def save_api_key(provider: str, api_key: str, path: Path | None = None) -> Path:
     return credential_file
 
 
-__all__ = ["PROVIDER_API_KEYS", "credentials_path", "load_credentials", "save_api_key"]
+__all__ = [
+    "PROVIDER_API_KEYS",
+    "credentials_path",
+    "load_credentials",
+    "save_api_key",
+    "validate_api_key",
+]

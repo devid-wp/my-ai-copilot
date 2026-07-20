@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from core.agent_executor import create_tool_registry, tool_result_payload
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
-from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key
+from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.tools import ToolCall
@@ -47,8 +47,8 @@ class SessionSettings:
         return self.model or PROVIDER_MODELS[self.provider][0]
 
 
-load_dotenv()
 load_credentials()
+load_dotenv()
 
 if sys.platform == "win32":
     # Python launched from MSYS or an older console may inherit a legacy code page.
@@ -108,17 +108,28 @@ def handle_slash(
             console.error(f"Неизвестный провайдер: {provider}")
             return client, False
         environment_name = PROVIDER_API_KEYS.get(provider)
-        if environment_name and not os.getenv(environment_name):
-            api_key = console.secret(f"{provider.upper()} API key").strip()
-            if not api_key:
+        if environment_name:
+            saved_key = os.getenv(environment_name, "").strip()
+            label = f"{provider.upper()} API key"
+            if saved_key:
+                label += " (Enter = оставить сохранённый)"
+            entered_key = console.secret(label).strip()
+            if not entered_key and not saved_key:
                 console.error("API-ключ не введён. Провайдер не изменён.")
                 return client, False
+            api_key = entered_key or saved_key
             try:
-                save_api_key(provider, api_key)
-            except (OSError, ValueError) as exc:
+                validate_api_key(provider, api_key)
+                if entered_key:
+                    save_api_key(provider, api_key)
+            except ValueError as exc:
+                console.error(str(exc))
+                return client, False
+            except OSError as exc:
                 console.error(f"Не удалось сохранить API-ключ: {exc}")
                 return client, False
-            console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
+            if entered_key:
+                console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
         settings.provider = provider
         settings.model = None
         if provider == "ollama" and settings.agent:
