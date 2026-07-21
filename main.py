@@ -299,21 +299,22 @@ def handle_slash(
         if provider not in PROVIDER_MODELS:
             console.error(f"Неизвестный провайдер: {provider}")
             return client, False
-        if not configure_provider_key(provider, console, allow_replacement=True):
+        if not configure_provider_key(provider, console, allow_replacement=False):
             console.error("Провайдер не изменён.")
             return client, False
+        try:
+            models = provider_models(provider)
+        except RuntimeError as exc:
+            console.error(str(exc))
+            return client, False
+        model = console.choose("Модель", models)
         settings.provider = provider
-        settings.model = None
+        settings.model = model
         settings.tool_compatibility = "unknown"
-        if provider == "ollama":
-            try:
-                settings.model = provider_models(provider)[0]
-            except RuntimeError as exc:
-                console.warning(str(exc))
         if settings.agent and not verify_tool_compatibility(settings, console):
             settings.agent = False
             console.warning("Режим переключён на chat.")
-        console.success(f"Провайдер: {provider}")
+        console.success(f"Провайдер: {provider} · Модель: {model}")
         return None, False
     if command == "model":
         if value:

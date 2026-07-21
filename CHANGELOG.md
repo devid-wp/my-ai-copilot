@@ -24,3 +24,4 @@
 - Added a cached native-tool compatibility probe before enabling Ollama agent mode.
 - Expanded `/status` with provider health, model availability, tools and session diagnostics.
 - Added a first-run wizard with one-time API-key setup and remembered defaults.
+- Fixed empty cloud chat replies and completed provider switching with model selection.

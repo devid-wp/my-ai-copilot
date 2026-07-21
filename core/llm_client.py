@@ -55,15 +55,16 @@ class NVIDIAClient:
 
         tool_buffers: dict[int, dict[str, Any]] = {}
         content: list[str] = []
-        stream = self.client.chat.completions.create(  # type: ignore[call-overload]
-            model=self.select_model(routing_prompt),
-            messages=self._clean_messages(messages),
-            temperature=0.4,
-            max_tokens=4096,
-            stream=True,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
+        request: dict[str, Any] = {
+            "model": self.select_model(routing_prompt),
+            "messages": self._clean_messages(messages),
+            "temperature": 0.4,
+            "max_tokens": 4096,
+            "stream": True,
+        }
+        if external_messages:
+            request.update(tools=TOOLS, tool_choice="auto")
+        stream = self.client.chat.completions.create(**request)
         for chunk in stream:
             if not chunk.choices:
                 continue

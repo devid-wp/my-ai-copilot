@@ -5,6 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from core.gemini_client import GeminiClient
 from core.llm_client import NVIDIAClient
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 
@@ -45,9 +46,11 @@ def test_client_message_structure(monkeypatch):
     )
 
     called_messages = []
+    called_requests = []
 
     class MockCompletions:
         def create(self, **kwargs):
+            called_requests.append(kwargs)
             called_messages.extend(kwargs.get("messages", []))
             return []
 
@@ -64,3 +67,45 @@ def test_client_message_structure(monkeypatch):
     assert called_messages[0]["content"] == "My Test System Prompt"
     assert called_messages[1]["role"] == "user"
     assert called_messages[1]["content"] == "Hello model"
+    assert "tools" not in called_requests[0]
+
+
+def test_client_enables_tools_for_agent_messages(monkeypatch):
+    client = NVIDIAClient(api_key="nvapi-test", system_prompt="system")
+    called_requests = []
+
+    class MockCompletions:
+        def create(self, **kwargs):
+            called_requests.append(kwargs)
+            return []
+
+    class MockChat:
+        completions = MockCompletions()
+
+    monkeypatch.setattr(client.client, "chat", MockChat())
+
+    list(client.ask_stream("", messages=[{"role": "user", "content": "create a file"}]))
+
+    assert called_requests[0]["tools"]
+    assert called_requests[0]["tool_choice"] == "auto"
+
+
+def test_gemini_chat_omits_tools_but_agent_enables_them(monkeypatch):
+    client = GeminiClient(api_key="test", system_prompt="system")
+    called_requests = []
+
+    class MockCompletions:
+        def create(self, **kwargs):
+            called_requests.append(kwargs)
+            return []
+
+    class MockChat:
+        completions = MockCompletions()
+
+    monkeypatch.setattr(client._client, "chat", MockChat())
+
+    list(client.ask_stream("hello"))
+    list(client.ask_stream("", messages=[{"role": "user", "content": "create a file"}]))
+
+    assert "tools" not in called_requests[0]
+    assert called_requests[1]["tools"]

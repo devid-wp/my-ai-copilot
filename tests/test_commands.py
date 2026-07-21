@@ -2,13 +2,16 @@ from main import SessionSettings, handle_slash, parse_slash
 
 
 class FakeConsole:
-    def __init__(self, choice: str = "", secret: str = "") -> None:
+    def __init__(self, choice: str = "", secret: str = "", model_choice: str = "") -> None:
         self.choice = choice
+        self.model_choice = model_choice
         self.secret_value = secret
         self.secret_prompts: list[str] = []
         self.messages: list[tuple[str, str]] = []
 
-    def choose(self, _title: str, _options: list[str]) -> str:
+    def choose(self, title: str, _options: list[str]) -> str:
+        if title == "Модель" and self.model_choice:
+            return self.model_choice
         return self.choice
 
     def secret(self, label: str) -> str:
@@ -36,19 +39,19 @@ def test_parse_slash_command_and_value():
 def test_provider_command_resets_model_and_client(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "configured")
     settings = SessionSettings(provider="nvidia", model="custom")
-    console = FakeConsole()
+    console = FakeConsole(model_choice="gemini-2.5-pro")
     client, should_exit = handle_slash(("provider", "gemini"), settings, console, FakeSession(), object())
     assert client is None
     assert should_exit is False
     assert settings.provider == "gemini"
-    assert settings.model is None
-    assert "оставить сохранённый" in console.secret_prompts[0]
+    assert settings.model == "gemini-2.5-pro"
+    assert console.secret_prompts == []
 
 
 def test_provider_command_can_use_interactive_choice(monkeypatch):
     monkeypatch.setattr("main.provider_models", lambda _provider: ["qwen2.5:3b"])
     settings = SessionSettings()
-    console = FakeConsole(choice="ollama")
+    console = FakeConsole(choice="ollama", model_choice="qwen2.5:3b")
     handle_slash(("provider", ""), settings, console, FakeSession(), None)
     assert settings.provider == "ollama"
     assert settings.model == "qwen2.5:3b"
@@ -75,7 +78,11 @@ def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     settings = SessionSettings(provider="nvidia")
 
     client, _ = handle_slash(
-        ("provider", "gemini"), settings, FakeConsole(secret="secret-value"), FakeSession(), object()
+        ("provider", "gemini"),
+        settings,
+        FakeConsole(secret="secret-value", model_choice="gemini-2.0-flash"),
+        FakeSession(),
+        object(),
     )
 
     assert saved == [("gemini", "secret-value")]
@@ -83,17 +90,21 @@ def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     assert client is None
 
 
-def test_provider_command_can_replace_saved_api_key(monkeypatch):
+def test_provider_command_reuses_saved_api_key(monkeypatch):
     saved: list[tuple[str, str]] = []
     monkeypatch.setenv("GEMINI_API_KEY", "old-key")
     monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
     settings = SessionSettings(provider="nvidia")
 
     handle_slash(
-        ("provider", "gemini"), settings, FakeConsole(secret="new-key"), FakeSession(), object()
+        ("provider", "gemini"),
+        settings,
+        FakeConsole(secret="new-key", model_choice="gemini-2.0-flash"),
+        FakeSession(),
+        object(),
     )
 
-    assert saved == [("gemini", "new-key")]
+    assert saved == []
     assert settings.provider == "gemini"
 
 

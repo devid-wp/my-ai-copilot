@@ -76,15 +76,16 @@ class GeminiClient:
         selected = self.select_model(model_prompt)
         full_response = []
 
-        stream = self._client.chat.completions.create(  # type: ignore[call-overload]
-            model=selected,
-            messages=clean_messages,
-            temperature=0.5,
-            max_tokens=4096,
-            stream=True,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
+        request: dict[str, Any] = {
+            "model": selected,
+            "messages": clean_messages,
+            "temperature": 0.5,
+            "max_tokens": 4096,
+            "stream": True,
+        }
+        if external_messages:
+            request.update(tools=TOOLS, tool_choice="auto")
+        stream = self._client.chat.completions.create(**request)
 
         for chunk in stream:
             if not chunk.choices:
