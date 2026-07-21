@@ -120,15 +120,20 @@ class Console:
             is_password=True,
         )
 
-    def choose(self, title: str, options: list[str]) -> str:
+    def choose(self, title: str, options: list[str], default: str | None = None) -> str:
+        if default not in options:
+            default = None
         menu = Table(box=box.SIMPLE, show_header=False, padding=(0, 1), border_style=MUTED)
         menu.add_column("number", justify="right", style=f"bold {PURPLE}", width=3)
         menu.add_column("option", style="white")
         for index, option in enumerate(options, 1):
-            menu.add_row(str(index), option)
+            label = f"{option}  [default]" if option == default else option
+            menu.add_row(str(index), label)
         self.output.print(Panel(menu, title=f"[bold]{title}[/bold]", border_style=PURPLE, box=box.ROUNDED))
         while True:
             answer = self._read("select ❯ ", HTML("<brand>select</brand> <prompt>❯</prompt> ")).strip()
+            if not answer and default is not None:
+                return default
             if answer in options:
                 return answer
             if answer.isdigit() and 1 <= int(answer) <= len(options):

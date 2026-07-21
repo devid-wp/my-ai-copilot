@@ -45,6 +45,15 @@ def test_regular_prompt_disables_password_mode_after_secret(monkeypatch):
     assert session.password_modes == [True, False]
 
 
+def test_choose_accepts_default_on_empty_input(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+    console = Console()
+
+    assert console.choose("Mode", ["agent", "chat"], default="chat") == "chat"
+
+
 def test_tool_call_rendering_is_compact_and_hides_file_content(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: False)

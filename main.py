@@ -20,6 +20,7 @@ from core.context_manager import get_git_log, get_project_context
 from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
 from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
+from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.tools import AgentLimits, ToolCall, ToolResult, ToolStatus
 
@@ -125,6 +126,98 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
     return False
 
 
+def configure_provider_key(
+    provider: str,
+    console: Console,
+    *,
+    allow_replacement: bool,
+) -> bool:
+    environment_name = PROVIDER_API_KEYS.get(provider)
+    if environment_name is None:
+        return True
+    saved_key = os.getenv(environment_name, "").strip()
+    if saved_key and not allow_replacement:
+        return True
+
+    label = f"{provider.upper()} API key"
+    if saved_key:
+        label += " (Enter = оставить сохранённый)"
+    entered_key = console.secret(label).strip()
+    if not entered_key and not saved_key:
+        console.error("API-ключ не введён.")
+        return False
+    api_key = entered_key or saved_key
+    try:
+        validate_api_key(provider, api_key)
+        if entered_key:
+            save_api_key(provider, api_key)
+    except ValueError as exc:
+        console.error(str(exc))
+        return False
+    except OSError as exc:
+        console.error(f"Не удалось сохранить API-ключ: {exc}")
+        return False
+    if entered_key:
+        console.success("API-ключ сохранён. Повторно вводить его не потребуется.")
+    return True
+
+
+def run_startup_setup(
+    settings: SessionSettings,
+    console: Console,
+    preferences: UserPreferences,
+) -> bool:
+    """Guide an interactive user through the minimum startup choices."""
+    mode = console.choose(
+        "Режим запуска",
+        ["agent", "chat"],
+        default=preferences.mode,
+    )
+    provider = console.choose(
+        "Провайдер",
+        list(PROVIDER_MODELS),
+        default=settings.provider,
+    )
+    if not configure_provider_key(provider, console, allow_replacement=False):
+        return False
+
+    try:
+        models = provider_models(provider)
+    except RuntimeError as exc:
+        console.error(str(exc))
+        return False
+    preferred_model = settings.model or preferences.models.get(provider)
+    available_models = list(models)
+    while available_models:
+        model = console.choose(
+            "Модель",
+            available_models,
+            default=preferred_model if preferred_model in available_models else available_models[0],
+        )
+        settings.provider = provider
+        settings.model = model
+        settings.agent = mode == "agent"
+        settings.tool_compatibility = "unknown"
+        if not settings.agent or verify_tool_compatibility(settings, console):
+            break
+        available_models.remove(model)
+        preferred_model = None
+        if available_models:
+            console.warning("Выберите другую модель для agent-режима.")
+    else:
+        console.error("Нет совместимой модели для agent-режима.")
+        return False
+
+    preferences.provider = settings.provider
+    preferences.mode = settings.mode
+    preferences.models[settings.provider] = settings.display_model
+    try:
+        save_preferences(preferences)
+    except OSError as exc:
+        console.warning(f"Не удалось сохранить настройки запуска: {exc}")
+    return True
+
+
 def session_diagnostics(
     settings: SessionSettings,
     session: AgentMemory,
@@ -206,29 +299,9 @@ def handle_slash(
         if provider not in PROVIDER_MODELS:
             console.error(f"Неизвестный провайдер: {provider}")
             return client, False
-        environment_name = PROVIDER_API_KEYS.get(provider)
-        if environment_name:
-            saved_key = os.getenv(environment_name, "").strip()
-            label = f"{provider.upper()} API key"
-            if saved_key:
-                label += " (Enter = оставить сохранённый)"
-            entered_key = console.secret(label).strip()
-            if not entered_key and not saved_key:
-                console.error("API-ключ не введён. Провайдер не изменён.")
-                return client, False
-            api_key = entered_key or saved_key
-            try:
-                validate_api_key(provider, api_key)
-                if entered_key:
-                    save_api_key(provider, api_key)
-            except ValueError as exc:
-                console.error(str(exc))
-                return client, False
-            except OSError as exc:
-                console.error(f"Не удалось сохранить API-ключ: {exc}")
-                return client, False
-            if entered_key:
-                console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
+        if not configure_provider_key(provider, console, allow_replacement=True):
+            console.error("Провайдер не изменён.")
+            return client, False
         settings.provider = provider
         settings.model = None
         settings.tool_compatibility = "unknown"
@@ -422,7 +495,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
     parser.add_argument("--project", "-p", default=os.getcwd(), help="Корень проекта")
     parser.add_argument(
-        "--provider", choices=["nvidia", "gemini", "ollama"], default=os.getenv("LLM_PROVIDER", "nvidia")
+        "--provider", choices=["nvidia", "gemini", "ollama"], default=None
     )
     parser.add_argument("--model", "-m", help="Одна модель для чата и кода")
     parser.add_argument("--agent", "-a", action="store_true", help="Разрешить агентные инструменты")
@@ -432,6 +505,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--user", "-u", default=os.getenv("USER", os.getenv("USERNAME", "dev")))
     parser.add_argument("--max-steps", type=int, default=30)
+    parser.add_argument(
+        "--skip-setup",
+        action="store_true",
+        help="Пропустить интерактивный мастер запуска",
+    )
     return parser.parse_args(argv)
 
 
@@ -442,14 +520,26 @@ def main(argv: list[str] | None = None) -> int:
     if not Path(project_root).is_dir():
         console.error(f"Папка проекта не найдена: {project_root}")
         return 2
+    preferences = load_preferences()
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
-    settings = SessionSettings(args.provider, args.model, args.agent, args.yes)
+    provider = args.provider or preferences.provider or os.getenv("LLM_PROVIDER", "nvidia")
+    preferred_model = args.model or preferences.models.get(provider)
+    settings = SessionSettings(provider, preferred_model, args.agent, args.yes)
     settings.project_root = project_root
-    if settings.provider == "ollama" and settings.model is None:
-        with suppress(RuntimeError):
-            settings.model = provider_models("ollama")[0]
-    if settings.agent and not verify_tool_compatibility(settings, console):
-        return 2
+    interactive_setup = not args.oneshot and not args.skip_setup
+    if interactive_setup:
+        try:
+            if not run_startup_setup(settings, console, preferences):
+                return 2
+        except (EOFError, KeyboardInterrupt):
+            console.goodbye()
+            return 0
+    else:
+        if settings.provider == "ollama" and settings.model is None:
+            with suppress(RuntimeError):
+                settings.model = provider_models("ollama")[0]
+        if settings.agent and not verify_tool_compatibility(settings, console):
+            return 2
     client = None
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
     console.hint("/provider · /model · /mode · /permissions · /help")

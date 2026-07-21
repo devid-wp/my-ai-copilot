@@ -23,3 +23,4 @@
 - Added agent-loop guards for repeated calls, error streaks, pseudo-calls and action summaries.
 - Added a cached native-tool compatibility probe before enabling Ollama agent mode.
 - Expanded `/status` with provider health, model availability, tools and session diagnostics.
+- Added a first-run wizard with one-time API-key setup and remembered defaults.
