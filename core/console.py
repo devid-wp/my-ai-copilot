@@ -17,6 +17,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from core.agent_loop import ToolRunRecord
+from core.tools import ToolStatus
+
 PURPLE = "#a78bfa"
 PURPLE_DARK = "#7c3aed"
 CYAN = "#22d3ee"
@@ -167,6 +170,23 @@ class Console:
                 ("  ·  ", MUTED),
                 (model, MUTED),
             )
+        )
+
+    def agent_summary(self, records: list[ToolRunRecord]) -> None:
+        if not records:
+            return
+        table = Table.grid(padding=(0, 1))
+        table.add_column(width=2)
+        table.add_column(style="bold white")
+        table.add_column(style=MUTED)
+        for record in records[-12:]:
+            successful = record.status is ToolStatus.SUCCESS
+            symbol = Text("✓" if successful else "✕", style=GREEN if successful else RED)
+            table.add_row(symbol, record.name, self._shorten(record.detail))
+        if len(records) > 12:
+            table.add_row(Text("…", style=MUTED), f"{len(records) - 12} earlier action(s)", "")
+        self.output.print(
+            Panel(table, title="[bold]Agent summary[/bold]", border_style=MUTED, box=box.ROUNDED)
         )
 
     def tool(self, name: str, arguments: dict[str, Any]) -> None:

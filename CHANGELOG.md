@@ -20,3 +20,4 @@
 - Enabled native Ollama tool calls and surfaced local API errors instead of empty replies.
 - Fixed streamed Ollama errors and populated the model menu from the local server.
 - Centralized tool authorization around risk-aware permission policies.
+- Added agent-loop guards for repeated calls, error streaks, pseudo-calls and action summaries.

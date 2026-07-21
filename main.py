@@ -14,12 +14,13 @@ from typing import Any
 from dotenv import load_dotenv
 
 from core.agent_executor import create_tool_registry, tool_result_payload
+from core.agent_loop import AgentLoopGuard, pseudo_tool_name
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
 from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
-from core.tools import ToolCall
+from core.tools import AgentLimits, ToolCall, ToolResult, ToolStatus
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -245,13 +246,15 @@ def run_agent(
 ) -> None:
     memory = AgentMemory(str(Path(project_root) / "logs" / "session.json"), username)
     memory.add("user", prompt)
+    limits = AgentLimits(max_steps=max_steps)
+    guard = AgentLoopGuard(limits)
 
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
     tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
 
-    for step in range(1, max_steps + 1):
+    for step in range(1, limits.max_steps + 1):
         client.system_prompt = build_system_prompt(project_root, username, memory)
         if memory.history and memory.history[0].get("role") == "system":
             memory.history[0]["content"] = client.system_prompt
@@ -259,12 +262,21 @@ def run_agent(
             memory.history.insert(0, {"role": "system", "content": client.system_prompt})
         memory.save()
 
-        console.step(step, max_steps, client.select_model(prompt))
+        console.step(step, limits.max_steps, client.select_model(prompt))
         response = console.stream(client.ask_stream("", messages=memory.get_history()))
         tool_calls = client.get_last_tool_calls()
         memory.add("assistant", response, tool_calls=tool_calls or None)
 
         if not tool_calls:
+            pseudo_name = pseudo_tool_name(response)
+            if pseudo_name is not None:
+                console.error(
+                    f"Модель напечатала псевдовызов {pseudo_name} вместо native tool call. "
+                    "Выберите модель с надёжной поддержкой tools."
+                )
+                console.agent_summary(guard.records)
+                return
+            console.agent_summary(guard.records)
             console.success("Задача завершена")
             return
 
@@ -275,15 +287,26 @@ def run_agent(
                 arguments = json.loads(function.get("arguments") or "{}")
             except json.JSONDecodeError as exc:
                 result = {"status": "error", "error": f"Некорректные аргументы инструмента: {exc}"}
+                guard.record_invalid_call(name)
             else:
                 console.tool(name, arguments)
-                typed_result = tool_registry.execute(
-                    ToolCall(
-                        id=tool_call.get("id", "call_0"),
-                        name=name,
-                        arguments=arguments,
-                    )
+                call = ToolCall(
+                    id=tool_call.get("id", "call_0"),
+                    name=name,
+                    arguments=arguments,
                 )
+                guard_error = guard.inspect(call)
+                typed_result = (
+                    ToolResult(
+                        call_id=call.id,
+                        name=call.name,
+                        status=ToolStatus.ERROR,
+                        error=guard_error,
+                    )
+                    if guard_error is not None
+                    else tool_registry.execute(call)
+                )
+                guard.record(call, typed_result)
                 result = tool_result_payload(typed_result)
             memory.add(
                 "tool",
@@ -292,9 +315,16 @@ def run_agent(
                 name=name,
             )
             console.tool_result(result)
+        if guard.error_limit_reached:
+            console.agent_summary(guard.records)
+            console.error(
+                f"Агент остановлен после {guard.consecutive_errors} последовательных ошибок."
+            )
+            return
         memory.trim(50)
 
-    console.error(f"Достигнут лимит в {max_steps} шагов.")
+    console.agent_summary(guard.records)
+    console.error(f"Достигнут лимит в {limits.max_steps} шагов.")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

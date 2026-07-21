@@ -2,7 +2,9 @@ import io
 
 from rich.console import Console as RichConsole
 
+from core.agent_loop import ToolRunRecord
 from core.console import Console
+from core.tools import ToolStatus
 
 
 def test_header_contains_session_details(monkeypatch):
@@ -83,3 +85,18 @@ def test_tool_error_rendering_includes_structured_code(monkeypatch):
     rendered = stream.getvalue()
     assert "INVALID_ARGUMENTS" in rendered
     assert "'path' is required" in rendered
+
+
+def test_agent_summary_lists_actions(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=120)
+
+    console.agent_summary([ToolRunRecord("create_file", ToolStatus.SUCCESS, "page.html")])
+
+    rendered = stream.getvalue()
+    assert "Agent summary" in rendered
+    assert "create_file" in rendered
+    assert "page.html" in rendered
