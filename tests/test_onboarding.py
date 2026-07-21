@@ -88,6 +88,7 @@ def test_agent_setup_reprompts_after_incompatible_ollama_model(monkeypatch):
     console = WizardConsole(
         {
             "Режим запуска": "agent",
+            "Разрешения агента": "Спрашивать перед действиями",
             "Провайдер": "ollama",
             "Модель": "unused",
         }
@@ -104,3 +105,23 @@ def test_agent_setup_reprompts_after_incompatible_ollama_model(monkeypatch):
     assert run_startup_setup(settings, console, UserPreferences(provider="ollama")) is True
     assert settings.model == "good-model"
     assert settings.agent is True
+
+
+def test_agent_setup_remembers_automatic_permissions(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-saved")
+    saved_preferences = []
+    monkeypatch.setattr("main.save_preferences", saved_preferences.append)
+    console = WizardConsole(
+        {
+            "Режим запуска": "agent",
+            "Разрешения агента": "Автоподтверждение (полный доступ к рабочей папке)",
+            "Провайдер": "nvidia",
+            "Модель": "meta/llama-3.1-8b-instruct",
+        }
+    )
+    settings = SessionSettings()
+
+    assert run_startup_setup(settings, console, UserPreferences()) is True
+
+    assert settings.auto_approve is True
+    assert saved_preferences[0].permissions == "auto"

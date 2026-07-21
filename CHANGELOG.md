@@ -27,3 +27,4 @@
 - Fixed empty cloud chat replies and completed provider switching with model selection.
 - Routed conversational prompts safely through chat even while agent mode is enabled.
 - Added in-session project switching and actionable handling for paths outside the workspace.
+- Added remembered ask/auto permission selection to the agent startup flow.

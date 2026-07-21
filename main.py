@@ -174,6 +174,25 @@ def run_startup_setup(
         ["agent", "chat"],
         default=preferences.mode,
     )
+    if mode == "agent":
+        permission_labels = {
+            "Спрашивать перед действиями": "ask",
+            "Автоподтверждение (полный доступ к рабочей папке)": "auto",
+        }
+        default_permission = next(
+            label
+            for label, permission in permission_labels.items()
+            if permission == ("auto" if settings.auto_approve else preferences.permissions)
+        )
+        permission_label = console.choose(
+            "Разрешения агента",
+            list(permission_labels),
+            default=default_permission,
+        )
+        settings.auto_approve = permission_labels[permission_label] == "auto"
+        preferences.permissions = settings.permissions
+    else:
+        settings.auto_approve = False
     provider = console.choose(
         "Провайдер",
         list(PROVIDER_MODELS),
@@ -356,7 +375,15 @@ def handle_slash(
         console.success(f"Режим: {mode}")
         return client, False
     if command == "permissions":
-        permissions = value.casefold() if value else console.choose("Подтверждения", ["ask", "auto"])
+        if value:
+            permissions = value.casefold()
+        else:
+            permission_labels = {
+                "Спрашивать перед действиями": "ask",
+                "Автоподтверждение (полный доступ к рабочей папке)": "auto",
+            }
+            selected = console.choose("Разрешения агента", list(permission_labels))
+            permissions = permission_labels[selected]
         if permissions not in {"ask", "auto"}:
             console.error("Используйте /permissions ask или /permissions auto")
             return client, False

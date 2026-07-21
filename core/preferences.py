@@ -14,6 +14,7 @@ from core.credentials import credentials_path
 class UserPreferences:
     provider: str = "nvidia"
     mode: str = "chat"
+    permissions: str = "ask"
     models: dict[str, str] = field(default_factory=dict)
 
 
@@ -30,6 +31,7 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
 
     provider = str(payload.get("provider", "nvidia"))
     mode = str(payload.get("mode", "chat"))
+    permissions = str(payload.get("permissions", "ask"))
     raw_models = payload.get("models")
     models = (
         {str(name): str(model) for name, model in raw_models.items()}
@@ -40,7 +42,14 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         provider = "nvidia"
     if mode not in {"chat", "agent"}:
         mode = "chat"
-    return UserPreferences(provider=provider, mode=mode, models=models)
+    if permissions not in {"ask", "auto"}:
+        permissions = "ask"
+    return UserPreferences(
+        provider=provider,
+        mode=mode,
+        permissions=permissions,
+        models=models,
+    )
 
 
 def save_preferences(preferences: UserPreferences, path: Path | None = None) -> Path:

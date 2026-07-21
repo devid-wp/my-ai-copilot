@@ -6,6 +6,7 @@ def test_preferences_round_trip(tmp_path):
     preferences = UserPreferences(
         provider="ollama",
         mode="agent",
+        permissions="auto",
         models={"ollama": "qwen2.5:3b"},
     )
 
@@ -22,3 +23,4 @@ def test_invalid_preferences_fall_back_to_safe_defaults(tmp_path):
 
     assert preferences.provider == "nvidia"
     assert preferences.mode == "chat"
+    assert preferences.permissions == "ask"
