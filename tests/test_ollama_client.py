@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from core.ollama_client import OllamaClient
+from core.ollama_client import OllamaClient, ToolCompatibility, probe_tool_support
 
 
 class FakeStreamResponse:
@@ -132,3 +132,46 @@ def test_http_error_is_not_silently_swallowed(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Ollama HTTP 404: model not found"):
         list(client.ask_stream("hello"))
+
+
+def test_tool_compatibility_probe_accepts_native_call(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "message": {
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "compatibility_probe",
+                                "arguments": {"value": "ok"},
+                            }
+                        }
+                    ]
+                }
+            }
+
+    probe_tool_support.cache_clear()
+    monkeypatch.setattr("core.ollama_client.httpx.post", lambda *_args, **_kwargs: Response())
+
+    assert probe_tool_support("http://ollama", "good-model") is ToolCompatibility.SUPPORTED
+
+
+def test_tool_compatibility_probe_rejects_text_imitation(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "message": {
+                    "content": '{"name":"compatibility_probe","arguments":{"value":"ok"}}'
+                }
+            }
+
+    probe_tool_support.cache_clear()
+    monkeypatch.setattr("core.ollama_client.httpx.post", lambda *_args, **_kwargs: Response())
+
+    assert probe_tool_support("http://ollama", "weak-model") is ToolCompatibility.UNRELIABLE

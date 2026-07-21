@@ -1,6 +1,8 @@
 # core/ollama_client.py
 import json
 from collections.abc import Generator
+from enum import Enum
+from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -8,6 +10,11 @@ import httpx
 from core.functions import FUNCTION_DEFINITIONS
 
 TOOLS = [{"type": "function", "function": definition} for definition in FUNCTION_DEFINITIONS]
+
+
+class ToolCompatibility(str, Enum):
+    SUPPORTED = "supported"
+    UNRELIABLE = "unreliable"
 
 
 class OllamaClient:
@@ -43,6 +50,9 @@ class OllamaClient:
             return [m["name"] for m in data.get("models", [])]
         except Exception:
             return []
+
+    def check_tool_support(self, model: str) -> ToolCompatibility:
+        return probe_tool_support(self.base_url, model)
 
     def select_model(self, prompt: str) -> str:
         from core.router import classify_prompt
@@ -185,3 +195,51 @@ class OllamaClient:
                 item["tool_name"] = str(message["name"])
             clean.append(item)
         return clean
+
+
+@lru_cache(maxsize=64)
+def probe_tool_support(base_url: str, model: str) -> ToolCompatibility:
+    """Ask a model for one harmless native call without executing the tool."""
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Call compatibility_probe now with value set to ok. "
+                    "Do not answer with text."
+                ),
+            }
+        ],
+        "stream": False,
+        "options": {"temperature": 0, "num_predict": 64},
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "compatibility_probe",
+                    "description": "Verify native tool calling support.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"value": {"type": "string", "enum": ["ok"]}},
+                        "required": ["value"],
+                    },
+                },
+            }
+        ],
+    }
+    try:
+        response = httpx.post(f"{base_url}/api/chat", json=payload, timeout=120)
+        response.raise_for_status()
+        message = response.json().get("message") or {}
+    except (httpx.HTTPError, ValueError) as exc:
+        raise RuntimeError(f"Не удалось проверить tools модели {model}: {exc}") from exc
+
+    for tool_call in message.get("tool_calls") or []:
+        function = tool_call.get("function") or {}
+        if function.get("name") == "compatibility_probe":
+            return ToolCompatibility.SUPPORTED
+    return ToolCompatibility.UNRELIABLE
+
+
+__all__ = ["OllamaClient", "ToolCompatibility", "probe_tool_support"]

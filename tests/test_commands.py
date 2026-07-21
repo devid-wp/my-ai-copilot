@@ -139,11 +139,21 @@ def test_provider_command_keeps_current_provider_when_key_cannot_be_saved(monkey
     assert client is not None
 
 
-def test_ollama_allows_agent_mode():
+def test_ollama_allows_agent_mode(monkeypatch):
+    monkeypatch.setattr("main.verify_tool_compatibility", lambda _settings, _console: True)
     settings = SessionSettings(provider="ollama")
     console = FakeConsole()
     handle_slash(("mode", "agent"), settings, console, FakeSession(), None)
     assert settings.agent is True
+
+
+def test_ollama_rejects_agent_mode_when_model_is_incompatible(monkeypatch):
+    monkeypatch.setattr("main.verify_tool_compatibility", lambda _settings, _console: False)
+    settings = SessionSettings(provider="ollama", model="weak-model")
+
+    handle_slash(("mode", "agent"), settings, FakeConsole(), FakeSession(), None)
+
+    assert settings.agent is False
 
 
 def test_permissions_command_changes_policy():

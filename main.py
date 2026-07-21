@@ -35,6 +35,7 @@ class SessionSettings:
     model: str | None = None
     agent: bool = False
     auto_approve: bool = False
+    tool_compatibility: str = "unknown"
 
     @property
     def mode(self) -> str:
@@ -88,6 +89,38 @@ def provider_models(provider: str) -> list[str]:
     if not models:
         raise RuntimeError("Ollama не вернул ни одной установленной модели.")
     return models
+
+
+def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bool:
+    if settings.provider != "ollama":
+        settings.tool_compatibility = "supported"
+        return True
+
+    from core.ollama_client import OllamaClient, ToolCompatibility
+
+    model = settings.display_model
+    console.activity(f"Проверка native tools: {model}")
+    client = OllamaClient(
+        "",
+        model_chat=model,
+        model_code=model,
+        base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
+    )
+    try:
+        compatibility = client.check_tool_support(model)
+    except RuntimeError as exc:
+        settings.tool_compatibility = "unavailable"
+        console.error(str(exc))
+        return False
+    settings.tool_compatibility = compatibility.value
+    if compatibility is ToolCompatibility.SUPPORTED:
+        console.success(f"Native tools поддерживаются: {model}")
+        return True
+    console.error(
+        f"Модель {model} печатает псевдовызовы вместо native tools. "
+        "Выберите другую модель для agent-режима."
+    )
+    return False
 
 
 def parse_slash(text: str) -> tuple[str, str] | None:
@@ -150,11 +183,15 @@ def handle_slash(
                 console.success("API-ключ сохранён в пользовательской конфигурации Citadex")
         settings.provider = provider
         settings.model = None
+        settings.tool_compatibility = "unknown"
         if provider == "ollama":
             try:
                 settings.model = provider_models(provider)[0]
             except RuntimeError as exc:
                 console.warning(str(exc))
+        if settings.agent and not verify_tool_compatibility(settings, console):
+            settings.agent = False
+            console.warning("Режим переключён на chat.")
         console.success(f"Провайдер: {provider}")
         return None, False
     if command == "model":
@@ -168,12 +205,18 @@ def handle_slash(
                 return client, False
             model = console.choose("Модель", models)
         settings.model = model
+        settings.tool_compatibility = "unknown"
+        if settings.agent and not verify_tool_compatibility(settings, console):
+            settings.agent = False
+            console.warning("Режим переключён на chat.")
         console.success(f"Модель: {model}")
         return None, False
     if command == "mode":
         mode = value.casefold() if value else console.choose("Режим", ["chat", "agent"])
         if mode not in {"chat", "agent"}:
             console.error("Используйте /mode chat или /mode agent")
+            return client, False
+        if mode == "agent" and not verify_tool_compatibility(settings, console):
             return client, False
         settings.agent = mode == "agent"
         console.success(f"Режим: {mode}")
@@ -356,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
     if settings.provider == "ollama" and settings.model is None:
         with suppress(RuntimeError):
             settings.model = provider_models("ollama")[0]
+    if settings.agent and not verify_tool_compatibility(settings, console):
+        return 2
     client = None
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
     console.hint("/provider · /model · /mode · /permissions · /help")

@@ -172,6 +172,9 @@ class Console:
             )
         )
 
+    def activity(self, message: str) -> None:
+        self.output.print(Text.assemble(("◇ ", CYAN), (message, MUTED)))
+
     def agent_summary(self, records: list[ToolRunRecord]) -> None:
         if not records:
             return
