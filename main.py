@@ -22,6 +22,7 @@ from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
+from core.router import should_use_agent
 from core.tools import AgentLimits, ToolCall, ToolResult, ToolStatus
 
 PROVIDER_MODELS = {
@@ -480,6 +481,12 @@ def run_agent(
                 name=name,
             )
             console.tool_result(result)
+            if result.get("code") == "UNKNOWN_TOOL":
+                console.agent_summary(guard.records)
+                console.error(
+                    f"Модель запросила неизвестный инструмент: {name}. Агент остановлен."
+                )
+                return
         if guard.error_limit_reached:
             console.agent_summary(guard.records)
             console.error(
@@ -554,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
                 settings.model,
                 build_system_prompt(project_root, args.user, session),
             )
-            if settings.agent:
+            if should_use_agent(settings.agent, args.oneshot):
                 run_agent(
                     client,
                     args.oneshot,
@@ -596,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
                     settings.model,
                     build_system_prompt(project_root, args.user, session),
                 )
-            if settings.agent:
+            if should_use_agent(settings.agent, prompt):
                 run_agent(
                     client,
                     prompt,

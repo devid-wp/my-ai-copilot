@@ -1,4 +1,4 @@
-from core.router import classify_prompt
+from core.router import classify_prompt, should_use_agent
 
 
 def test_classify_code_english():
@@ -27,3 +27,10 @@ def test_classify_empty():
 def test_classify_case_insensitivity():
     assert classify_prompt("WRITE tests") == "code"
     assert classify_prompt("СОЗДАЙ файл") == "code"
+
+
+def test_agent_mode_keeps_conversation_in_safe_chat():
+    assert should_use_agent(True, "hello") is False
+    assert should_use_agent(True, "объясни как работает Python") is False
+    assert should_use_agent(True, "создай файл index.html") is True
+    assert should_use_agent(False, "создай файл index.html") is False
