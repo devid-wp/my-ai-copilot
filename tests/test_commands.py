@@ -172,3 +172,31 @@ def test_permissions_command_changes_policy():
     console = FakeConsole()
     handle_slash(("permissions", "auto"), settings, console, FakeSession(), None)
     assert settings.auto_approve is True
+
+
+def test_project_command_changes_working_root_and_resets_client(tmp_path):
+    settings = SessionSettings(project_root="C:/old-project")
+
+    client, should_exit = handle_slash(
+        ("project", str(tmp_path)), settings, FakeConsole(), FakeSession(), object()
+    )
+
+    assert settings.project_root == str(tmp_path.resolve())
+    assert client is None
+    assert should_exit is False
+
+
+def test_project_command_rejects_missing_directory(tmp_path):
+    settings = SessionSettings(project_root="C:/old-project")
+    client_instance = object()
+
+    client, _ = handle_slash(
+        ("project", str(tmp_path / "missing")),
+        settings,
+        FakeConsole(),
+        FakeSession(),
+        client_instance,
+    )
+
+    assert settings.project_root == "C:/old-project"
+    assert client is client_instance

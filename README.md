@@ -62,6 +62,7 @@ citadex --provider nvidia --project .
 
 ```text
 /provider        интерактивно выбрать провайдера
+/project PATH    сменить рабочую папку без перезапуска Citadex
 /model           выбрать модель
 /mode            переключить chat/agent
 /permissions     выбрать ask/auto

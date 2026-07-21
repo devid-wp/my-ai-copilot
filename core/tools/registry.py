@@ -112,6 +112,20 @@ class ToolRegistry:
                 content=content,
                 duration_ms=self._elapsed_ms(started),
             )
+        except PermissionError as exc:
+            message = str(exc) or type(exc).__name__
+            code = "PATH_OUTSIDE_PROJECT" if "outside project root" in message else "PERMISSION_ERROR"
+            return ToolResult(
+                call_id=call.id,
+                name=call.name,
+                status=ToolStatus.ERROR,
+                error=ToolError(
+                    code=code,
+                    message=message,
+                    details={"exception_type": type(exc).__name__},
+                ),
+                duration_ms=self._elapsed_ms(started),
+            )
         except Exception as exc:
             return ToolResult(
                 call_id=call.id,

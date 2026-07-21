@@ -295,6 +295,17 @@ def handle_slash(
             client.reset_history()
         console.success("История очищена")
         return client, False
+    if command == "project":
+        if not value:
+            console.error("Укажите папку: /project C:\\Users\\name\\Desktop")
+            return client, False
+        target = Path(value).expanduser().resolve()
+        if not target.is_dir():
+            console.error(f"Папка не найдена: {target}")
+            return client, False
+        settings.project_root = str(target)
+        console.success(f"Рабочая папка: {target}")
+        return None, False
     if command == "provider":
         provider = value.casefold() if value else console.choose("Провайдер", list(PROVIDER_MODELS))
         if provider not in PROVIDER_MODELS:
@@ -487,6 +498,13 @@ def run_agent(
                     f"Модель запросила неизвестный инструмент: {name}. Агент остановлен."
                 )
                 return
+            if result.get("code") == "PATH_OUTSIDE_PROJECT":
+                console.agent_summary(guard.records)
+                console.error(
+                    "Путь находится вне рабочей папки. Смените её командой "
+                    f"/project <path> (сейчас: {project_root}) и повторите запрос."
+                )
+                return
         if guard.error_limit_reached:
             console.agent_summary(guard.records)
             console.error(
@@ -550,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     client = None
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
-    console.hint("/provider · /model · /mode · /permissions · /help")
+    console.hint("/project · /provider · /model · /mode · /permissions · /help")
     if settings.auto_approve:
         console.warning("Автоподтверждение включено: агент может изменять файлы и запускать команды.")
 
@@ -559,13 +577,13 @@ def main(argv: list[str] | None = None) -> int:
             client = create_client(
                 settings.provider,
                 settings.model,
-                build_system_prompt(project_root, args.user, session),
+                build_system_prompt(settings.project_root, args.user, session),
             )
             if should_use_agent(settings.agent, args.oneshot):
                 run_agent(
                     client,
                     args.oneshot,
-                    project_root,
+                    settings.project_root,
                     args.user,
                     console,
                     settings.auto_approve,
@@ -601,13 +619,13 @@ def main(argv: list[str] | None = None) -> int:
                 client = create_client(
                     settings.provider,
                     settings.model,
-                    build_system_prompt(project_root, args.user, session),
+                    build_system_prompt(settings.project_root, args.user, session),
                 )
             if should_use_agent(settings.agent, prompt):
                 run_agent(
                     client,
                     prompt,
-                    project_root,
+                    settings.project_root,
                     args.user,
                     console,
                     settings.auto_approve,

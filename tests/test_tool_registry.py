@@ -72,6 +72,25 @@ def test_registry_returns_structured_unknown_tool_error():
     assert result.error.code == "UNKNOWN_TOOL"
 
 
+def test_outside_project_permission_error_has_actionable_code():
+    registry = ToolRegistry()
+    definition = ToolDefinition(
+        name="write",
+        description="Write a file.",
+        input_schema={"type": "object"},
+        risk=ToolRisk.PROJECT_WRITE,
+    )
+
+    def outside(_args):
+        raise PermissionError("Path 'outside.txt' is outside project root 'project'.")
+
+    registry.register(definition, outside)
+    result = registry.execute(ToolCall(id="call_outside", name="write", arguments={}))
+
+    assert result.error is not None
+    assert result.error.code == "PATH_OUTSIDE_PROJECT"
+
+
 def test_registry_rejects_missing_required_argument_before_handler(definition):
     calls: list[dict] = []
     registry = ToolRegistry()
