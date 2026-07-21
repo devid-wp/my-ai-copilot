@@ -18,6 +18,7 @@ from core.agent_loop import AgentLoopGuard, pseudo_tool_name
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
 from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
+from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.tools import AgentLimits, ToolCall, ToolResult, ToolStatus
@@ -36,6 +37,7 @@ class SessionSettings:
     agent: bool = False
     auto_approve: bool = False
     tool_compatibility: str = "unknown"
+    project_root: str = ""
 
     @property
     def mode(self) -> str:
@@ -123,6 +125,52 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
     return False
 
 
+def session_diagnostics(
+    settings: SessionSettings,
+    session: AgentMemory,
+    client: Any | None,
+) -> SessionDiagnostics:
+    session.reload()
+    provider_state = "configured"
+    model_state = "selected"
+    tools_state = settings.tool_compatibility
+
+    if settings.provider == "ollama":
+        try:
+            models = provider_models("ollama")
+        except RuntimeError:
+            provider_state = "offline"
+            model_state = "unavailable"
+        else:
+            provider_state = "online"
+            model_state = "available" if settings.display_model in models else "missing"
+        tools_state = (
+            "not checked" if settings.tool_compatibility == "unknown" else settings.tool_compatibility
+        )
+    else:
+        environment_name = PROVIDER_API_KEYS[settings.provider]
+        if not os.getenv(environment_name):
+            provider_state = "missing key"
+        tools_state = "supported"
+
+    project_root = settings.project_root
+    if not project_root:
+        session_path = Path(session.session_path).resolve()
+        project_root = str(session_path.parent.parent)
+    return SessionDiagnostics(
+        provider=settings.provider,
+        provider_state=provider_state,
+        model=settings.display_model,
+        model_state=model_state,
+        tools_state=tools_state,
+        mode=settings.mode,
+        permissions=settings.permissions,
+        project_root=project_root,
+        message_count=len(session.get_history()),
+        client_state="initialized" if client is not None else "not started",
+    )
+
+
 def parse_slash(text: str) -> tuple[str, str] | None:
     stripped = text.strip()
     if not stripped.startswith("/"):
@@ -145,7 +193,7 @@ def handle_slash(
         console.help()
         return client, False
     if command == "status":
-        console.status(settings.provider, settings.display_model, settings.mode, settings.permissions)
+        console.status(session_diagnostics(settings, session, client))
         return client, False
     if command == "clear":
         session.clear()
@@ -396,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
     settings = SessionSettings(args.provider, args.model, args.agent, args.yes)
+    settings.project_root = project_root
     if settings.provider == "ollama" and settings.model is None:
         with suppress(RuntimeError):
             settings.model = provider_models("ollama")[0]

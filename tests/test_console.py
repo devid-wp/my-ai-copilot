@@ -4,6 +4,7 @@ from rich.console import Console as RichConsole
 
 from core.agent_loop import ToolRunRecord
 from core.console import Console
+from core.diagnostics import SessionDiagnostics
 from core.tools import ToolStatus
 
 
@@ -100,3 +101,33 @@ def test_agent_summary_lists_actions(monkeypatch):
     assert "Agent summary" in rendered
     assert "create_file" in rendered
     assert "page.html" in rendered
+
+
+def test_status_renders_provider_health_and_session_details(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=120)
+
+    console.status(
+        SessionDiagnostics(
+            provider="ollama",
+            provider_state="online",
+            model="qwen2.5:3b",
+            model_state="available",
+            tools_state="supported",
+            mode="agent",
+            permissions="ask",
+            project_root="C:/project",
+            message_count=7,
+            client_state="initialized",
+        )
+    )
+
+    rendered = stream.getvalue()
+    assert "online" in rendered
+    assert "qwen2.5:3b" in rendered
+    assert "supported" in rendered
+    assert "C:/project" in rendered
+    assert "7" in rendered

@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from core.agent_loop import ToolRunRecord
+from core.diagnostics import SessionDiagnostics
 from core.tools import ToolStatus
 
 PURPLE = "#a78bfa"
@@ -144,15 +145,53 @@ class Console:
         self.output.print(hint)
         self.output.print()
 
-    def status(self, provider: str, model: str, mode: str, permissions: str) -> None:
+    def status(self, diagnostics: SessionDiagnostics) -> None:
         table = Table.grid(padding=(0, 2))
         table.add_column(style=MUTED)
         table.add_column(style="bold white")
-        table.add_row("provider", provider)
-        table.add_row("model", model)
-        table.add_row("mode", Text(mode, style=PURPLE if mode == "agent" else CYAN))
-        table.add_row("permissions", Text(permissions, style=YELLOW if permissions == "auto" else GREEN))
+        table.add_row(
+            "provider",
+            Text.assemble(
+                (diagnostics.provider, "bold white"),
+                ("  ·  ", MUTED),
+                (diagnostics.provider_state, self._state_color(diagnostics.provider_state)),
+            ),
+        )
+        table.add_row(
+            "model",
+            Text.assemble(
+                (diagnostics.model, "bold white"),
+                ("  ·  ", MUTED),
+                (diagnostics.model_state, self._state_color(diagnostics.model_state)),
+            ),
+        )
+        table.add_row(
+            "tools",
+            Text(diagnostics.tools_state, style=self._state_color(diagnostics.tools_state)),
+        )
+        table.add_row(
+            "mode",
+            Text(diagnostics.mode, style=PURPLE if diagnostics.mode == "agent" else CYAN),
+        )
+        table.add_row(
+            "permissions",
+            Text(
+                diagnostics.permissions,
+                style=YELLOW if diagnostics.permissions == "auto" else GREEN,
+            ),
+        )
+        table.add_row("project", diagnostics.project_root)
+        table.add_row("messages", str(diagnostics.message_count))
+        table.add_row("client", diagnostics.client_state)
         self.output.print(Panel(table, title="[bold]Session[/bold]", border_style=MUTED, box=box.ROUNDED))
+
+    @staticmethod
+    def _state_color(state: str) -> str:
+        if state in {"online", "available", "supported", "configured", "initialized"}:
+            return GREEN
+        if state in {"unknown", "not checked", "not started"}:
+            return YELLOW
+        return RED
 
     def stream(self, tokens: Iterable[str]) -> str:
         parts: list[str] = []

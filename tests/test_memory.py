@@ -71,3 +71,13 @@ def test_trim_memory(temp_session_file):
     # Rest should be the last 4 messages (msg 6, 7, 8, 9)
     assert history[1]["content"] == "msg 6"
     assert history[4]["content"] == "msg 9"
+
+
+def test_reload_reads_updates_from_another_instance(temp_session_file):
+    first = AgentMemory(temp_session_file)
+    second = AgentMemory(temp_session_file)
+    second.add("user", "updated elsewhere")
+
+    first.reload()
+
+    assert first.get_history()[0]["content"] == "updated elsewhere"

@@ -45,6 +45,11 @@ class AgentMemory:
         """Public persistence hook used after replacing the system prompt."""
         self._save()
 
+    def reload(self) -> None:
+        """Refresh history after another runtime instance updated the session."""
+        self.history = []
+        self._load()
+
     def add(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the history and persist to disk.
 

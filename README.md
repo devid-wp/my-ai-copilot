@@ -61,7 +61,7 @@ citadex --provider nvidia --project .
 /model           выбрать модель
 /mode            переключить chat/agent
 /permissions     выбрать ask/auto
-/status          показать текущие настройки
+/status          проверить провайдера, модель, tools и состояние сессии
 /clear           очистить историю
 /help            показать все команды
 ```
