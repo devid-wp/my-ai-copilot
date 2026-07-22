@@ -21,6 +21,7 @@ class PermissionRequest:
     risk: ToolRisk
     action: str
     detail: str
+    arguments: dict[str, object]
 
 
 PermissionCallback = Callable[[PermissionRequest], bool]
@@ -58,6 +59,7 @@ class PermissionPolicy:
             risk=definition.risk,
             action=RISK_ACTIONS.get(definition.risk, "execute tool"),
             detail=_call_detail(call),
+            arguments=dict(call.arguments),
         )
         if self.mode is PermissionMode.ASK and callback is not None and callback(request):
             return None

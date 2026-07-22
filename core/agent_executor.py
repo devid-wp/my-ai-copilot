@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import difflib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -31,6 +32,26 @@ from core.tools import (
 
 MAX_READ_BYTES = 50 * 1024
 MAX_OUTPUT_CHARS = 20_000
+
+
+def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str, limit: int = 40) -> str:
+    """Return a bounded unified diff suitable for an approval prompt."""
+    if tool_name not in {"create_file", "edit_file"} or "path" not in args:
+        return str(args.get("path") or args.get("command") or tool_name)
+    path = _target(project_root, str(args["path"]))
+    before = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    if tool_name == "create_file":
+        after = str(args.get("content", ""))
+    else:
+        lines = before.splitlines(keepends=True)
+        for patch in sorted(args.get("patches") or [], key=lambda item: int(item["start_line"]), reverse=True):
+            lines[int(patch["start_line"]) - 1 : int(patch["end_line"]) - 1] = [str(patch["new_content"])]
+        after = "".join(lines)
+    diff = list(difflib.unified_diff(before.splitlines(), after.splitlines(), fromfile=str(args["path"]), tofile=str(args["path"]), lineterm=""))
+    visible = diff[:limit]
+    if len(diff) > limit:
+        visible.append(f"... {len(diff) - limit} more lines")
+    return "\n".join(visible) or str(args["path"])
 
 
 def _target(project_root: str, raw_path: str, *, mutation: bool = False) -> Path:
@@ -243,7 +264,8 @@ def create_tool_registry(
 ) -> ToolRegistry:
     """Build the runtime registry with handlers bound to one project."""
     def request_approval(request: PermissionRequest) -> bool:
-        return approve(request.action, request.detail) if approve is not None else False
+        detail = preview_file_change(request.tool_name, request.arguments, project_root)
+        return approve(request.action, detail) if approve is not None else False
 
     policy = PermissionPolicy(PermissionMode.AUTO if auto_approve else PermissionMode.ASK)
     registry = ToolRegistry(policy, request_approval)
