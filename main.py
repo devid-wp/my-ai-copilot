@@ -527,14 +527,6 @@ def run_chat(client: Any, prompt: str, console: Console) -> None:
     console.stream(client.ask_stream(prompt))
 
 
-def execution_plan(prompt: str) -> list[str]:
-    """Build a short, honest preview without asking the model to mutate anything."""
-    lowered = prompt.casefold()
-    if any(word in lowered for word in ("проверь", "review", "check", "inspect", "что делает")):
-        return ["Изучить структуру проекта", "Проверить относящиеся к запросу файлы", "Сообщить результат"]
-    return ["Изучить нужные файлы", "Внести запрошенные изменения", "Проверить результат"]
-
-
 def run_agent(
     client: Any,
     prompt: str,
@@ -557,14 +549,13 @@ def run_agent(
     )
     guard = AgentLoopGuard(limits)
     guard.count_text(prompt)
-    console.execution_plan(execution_plan(prompt))
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
     tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
     prompt_cache = PromptCache(lambda: build_system_prompt(project_root, username, memory))
 
-    for step in range(1, limits.max_steps + 1):
+    for _step in range(1, limits.max_steps + 1):
         exhausted = guard.budget_error()
         if exhausted is not None:
             console.error(exhausted.message)
@@ -576,10 +567,8 @@ def run_agent(
             memory.history.insert(0, {"role": "system", "content": client.system_prompt})
         memory.save()
 
-        console.step(step, limits.max_steps, client.model_code)
         response = console.stream(client.ask_stream("", messages=memory.get_history()))
         guard.count_text(response)
-        console.agent_budget(step, guard)
         tool_calls = client.get_last_tool_calls()
         memory.add("assistant", response, tool_calls=tool_calls or None)
 
@@ -653,7 +642,6 @@ def run_agent(
             if result.get("status") == "error":
                 console.warning(recovery_advice(str(result.get("code", "")), project_root))
             if result.get("code") in {"TIME_BUDGET", "TOKEN_BUDGET", "TOOL_CALL_LIMIT"}:
-                console.agent_budget(step, guard)
                 console.error(str(result.get("error")))
                 return
             if result.get("code") == "UNKNOWN_TOOL":

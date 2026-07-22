@@ -256,31 +256,6 @@ class Console:
         self.output.print("\n")
         return "".join(parts)
 
-    def step(self, current: int, total: int, model: str) -> None:
-        self.output.print(
-            Text.assemble(
-                (f"STEP {current}/{total}", f"bold {PURPLE}"),
-                ("  ·  ", MUTED),
-                (model, MUTED),
-            )
-        )
-
-    def execution_plan(self, steps: list[str]) -> None:
-        body = Text("\n".join(f"{index}. {step}" for index, step in enumerate(steps, 1)))
-        self.output.print(Panel(body, title="[bold]План[/bold]", border_style=PURPLE, box=box.ROUNDED))
-
-    def agent_budget(self, step: int, guard: Any) -> None:
-        self.output.print(
-            Text(
-                f"Budget · steps {step}/{guard.limits.max_steps} · tools "
-                f"{guard.tool_call_count}/{guard.limits.max_tool_calls} · "
-                f"time {guard.elapsed_seconds:.1f}/{guard.limits.max_seconds}s · "
-                f"errors {guard.consecutive_errors}/{guard.limits.max_consecutive_errors} · "
-                f"tokens ≈{guard.estimated_tokens}/{guard.limits.max_estimated_tokens}",
-                style=MUTED,
-            )
-        )
-
     def activity(self, message: str) -> None:
         self.output.print(Text.assemble(("◇ ", CYAN), (message, MUTED)))
 
