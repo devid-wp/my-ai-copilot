@@ -202,4 +202,23 @@ BUILTIN_TOOL_DEFINITIONS += (
     ),
 )
 
+BUILTIN_TOOL_DEFINITIONS += (
+    ToolDefinition(
+        name="run_tests",
+        description="Run the project's detected test command, optionally scoped to one path.",
+        input_schema={
+            "type": "object", "properties": {"path": {"type": "string"}}, "required": [],
+        },
+        risk=ToolRisk.COMMAND_WRITE,
+    ),
+    ToolDefinition(
+        name="format_code",
+        description="Run the project's standard formatter on one project-relative path.",
+        input_schema={
+            "type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"],
+        },
+        risk=ToolRisk.COMMAND_WRITE,
+    ),
+)
+
 __all__ = ["BUILTIN_TOOL_DEFINITIONS"]

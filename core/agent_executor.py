@@ -311,6 +311,46 @@ def git_diff(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     return _run_git(arguments, project_root)
 
 
+def run_tests(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    scope = ""
+    if args.get("path"):
+        scope = _target(project_root, str(args["path"])).relative_to(root).as_posix()
+    if (root / "pyproject.toml").is_file() or (root / "pytest.ini").is_file():
+        command = "pytest" + (f" {scope}" if scope else "")
+    elif (root / "package.json").is_file():
+        command = "npm test" + (f" -- {scope}" if scope else "")
+    elif (root / "Cargo.toml").is_file():
+        command = "cargo test"
+    elif (root / "go.mod").is_file():
+        command = "go test ./..."
+    else:
+        raise RuntimeError("No supported test runner was detected.")
+    result = execute_cmd({"command": command}, project_root)
+    result["test_command"] = command
+    return result
+
+
+def format_code(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    path = _target(project_root, str(args["path"]), mutation=True)
+    relative = path.relative_to(root).as_posix()
+    if path.suffix == ".py":
+        command = f"python -m ruff format {relative}"
+    elif (root / "package.json").is_file():
+        command = f"npm exec prettier -- --write {relative}"
+    elif path.suffix == ".rs":
+        command = "cargo fmt"
+    elif path.suffix == ".go":
+        command = f"go fmt {relative}"
+    else:
+        raise RuntimeError(f"No supported formatter for: {relative}")
+    backup_file(path, project_root)
+    result = execute_cmd({"command": command}, project_root)
+    result["format_command"] = command
+    return result
+
+
 FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "create_file": create_file,
     "edit_file": edit_file,
@@ -326,6 +366,8 @@ FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "get_file_info": get_file_info,
     "git_status": git_status,
     "git_diff": git_diff,
+    "run_tests": run_tests,
+    "format_code": format_code,
 }
 
 
