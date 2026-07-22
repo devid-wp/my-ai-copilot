@@ -17,7 +17,14 @@ from core.agent_executor import create_tool_registry, tool_result_payload
 from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
-from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
+from core.credentials import (
+    PROVIDER_API_KEYS,
+    credential_status,
+    delete_api_key,
+    load_credentials,
+    save_api_key,
+    validate_api_key,
+)
 from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
@@ -323,6 +330,26 @@ def handle_slash(
         return client, False
     if command == "status":
         console.status(session_diagnostics(settings, session, client))
+        return client, False
+    if command == "keys":
+        statuses = credential_status()
+        summary = ", ".join(f"{name}: {'настроен' if ready else 'не настроен'}" for name, ready in statuses.items())
+        console.activity(f"API-ключи: {summary}")
+        provider = console.choose("Провайдер ключа", list(PROVIDER_API_KEYS))
+        action = console.choose("Действие", ["Проверить", "Заменить", "Удалить", "Отмена"])
+        if action == "Заменить":
+            configure_provider_key(provider, console, allow_replacement=True)
+        elif action == "Удалить":
+            delete_api_key(provider)
+            console.success(f"Ключ {provider.upper()} удалён")
+        elif action == "Проверить":
+            try:
+                probe = create_client(provider, None, "Reply with OK.")
+                next(iter(probe.ask_stream("OK")))
+            except Exception as exc:
+                console.error(f"Проверка ключа не пройдена: {exc}")
+            else:
+                console.success(f"Ключ {provider.upper()} работает")
         return client, False
     if command == "clear":
         session.clear()

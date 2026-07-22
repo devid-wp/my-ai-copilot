@@ -47,6 +47,7 @@ SLASH_COMMANDS = [
     "/model",
     "/mode",
     "/project",
+    "/keys",
     "/permissions",
     "/status",
     "/clear",
@@ -382,6 +383,7 @@ class Console:
         commands.add_column(style="white")
         rows = [
             ("/project <path>", "сменить рабочую папку"),
+            ("/keys", "управлять API-ключами (значения скрыты)"),
             ("/provider [name]", "выбрать NVIDIA, Gemini или Ollama"),
             ("/model [name]", "выбрать модель текущего провайдера"),
             ("/mode [chat|agent]", "переключить режим работы"),
