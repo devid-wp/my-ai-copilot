@@ -9,7 +9,7 @@ from core.tool_protocol import normalize_tool_call
 SMOKE_PATH = "pyproject.toml"
 
 
-def test_native_tool_calling(client: Any) -> str:
+def check_native_tool_calling(client: Any) -> str:
     """Ask the provider for a harmless tool call and return its tool name."""
     messages = [
         {
@@ -34,4 +34,4 @@ def test_native_tool_calling(client: Any) -> str:
     return call.name
 
 
-__all__ = ["SMOKE_PATH", "test_native_tool_calling"]
+__all__ = ["SMOKE_PATH", "check_native_tool_calling"]

@@ -10,7 +10,7 @@ from typing import Any
 
 from core.credentials import PROVIDER_API_KEYS, save_api_key, validate_api_key
 from core.preferences import UserPreferences, save_preferences
-from core.tool_smoke import test_native_tool_calling
+from core.tool_smoke import check_native_tool_calling
 from main import main as citadex_main
 
 API_MODELS = {
@@ -44,7 +44,7 @@ def configure_api(provider: str, api_key: str) -> str:
     key = validate_api_key(provider, api_key)
     model = API_MODELS[provider]
     client = create_api_client(provider, key, model)
-    test_native_tool_calling(client)
+    check_native_tool_calling(client)
     save_api_key(provider, key)
     project = str(Path.cwd().resolve())
     save_preferences(

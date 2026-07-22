@@ -1,4 +1,4 @@
-from core.tool_smoke import test_native_tool_calling
+from core.tool_smoke import check_native_tool_calling
 
 
 class FakeClient:
@@ -19,4 +19,4 @@ class FakeClient:
 
 
 def test_smoke_accepts_expected_native_call():
-    assert test_native_tool_calling(FakeClient()) == "file_exists"
+    assert check_native_tool_calling(FakeClient()) == "file_exists"
