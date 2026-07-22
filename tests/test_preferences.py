@@ -24,3 +24,12 @@ def test_invalid_preferences_fall_back_to_safe_defaults(tmp_path):
     assert preferences.provider == "nvidia"
     assert preferences.mode == "chat"
     assert preferences.permissions == "ask"
+
+
+def test_preferences_remember_recent_projects(tmp_path):
+    preferences = UserPreferences()
+    preferences.remember_project(str(tmp_path / "one"))
+    preferences.remember_project(str(tmp_path / "two"))
+    preferences.remember_project(str(tmp_path / "one"))
+    assert preferences.project_root.endswith("one")
+    assert len(preferences.recent_projects) == 2

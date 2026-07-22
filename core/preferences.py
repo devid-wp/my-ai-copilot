@@ -16,6 +16,13 @@ class UserPreferences:
     mode: str = "chat"
     permissions: str = "ask"
     models: dict[str, str] = field(default_factory=dict)
+    project_root: str = ""
+    recent_projects: list[str] = field(default_factory=list)
+
+    def remember_project(self, project_root: str, limit: int = 5) -> None:
+        resolved = str(Path(project_root).expanduser().resolve())
+        self.project_root = resolved
+        self.recent_projects = [resolved, *(item for item in self.recent_projects if item != resolved)][:limit]
 
 
 def preferences_path() -> Path:
@@ -49,6 +56,8 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         mode=mode,
         permissions=permissions,
         models=models,
+        project_root=str(payload.get("project_root", "")),
+        recent_projects=[str(item) for item in payload.get("recent_projects", []) if isinstance(item, str)][:5],
     )
 
 

@@ -323,6 +323,10 @@ def handle_slash(
             console.error(f"Папка не найдена: {target}")
             return client, False
         settings.project_root = str(target)
+        preferences = load_preferences()
+        preferences.remember_project(settings.project_root)
+        with suppress(OSError):
+            save_preferences(preferences)
         console.success(f"Рабочая папка: {target}")
         return None, False
     if command == "provider":
@@ -557,7 +561,7 @@ def run_agent(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
-    parser.add_argument("--project", "-p", default=os.getcwd(), help="Корень проекта")
+    parser.add_argument("--project", "-p", default=None, help="Корень проекта")
     parser.add_argument(
         "--provider", choices=["nvidia", "gemini", "ollama"], default=None
     )
@@ -579,12 +583,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    project_root = str(Path(args.project).resolve())
     console = Console()
+    preferences = load_preferences()
+    project_root = str(Path(args.project or preferences.project_root or os.getcwd()).resolve())
     if not Path(project_root).is_dir():
         console.error(f"Папка проекта не найдена: {project_root}")
         return 2
-    preferences = load_preferences()
+    preferences.remember_project(project_root)
+    with suppress(OSError):
+        save_preferences(preferences)
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
     provider = args.provider or preferences.provider or os.getenv("LLM_PROVIDER", "nvidia")
     preferred_model = args.model or preferences.models.get(provider)
