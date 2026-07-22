@@ -270,6 +270,7 @@ def session_diagnostics(
     provider_state = "configured"
     model_state = "selected"
     tools_state = settings.tool_compatibility
+    ollama_state = "unknown"
 
     if settings.provider == "ollama":
         try:
@@ -279,6 +280,7 @@ def session_diagnostics(
             model_state = "unavailable"
         else:
             provider_state = "online"
+            ollama_state = "online"
             model_state = "available" if settings.display_model in models else "missing"
         tools_state = (
             "not checked" if settings.tool_compatibility == "unknown" else settings.tool_compatibility
@@ -288,6 +290,12 @@ def session_diagnostics(
         if not os.getenv(environment_name):
             provider_state = "missing key"
         tools_state = "supported"
+        try:
+            provider_models("ollama")
+        except RuntimeError:
+            ollama_state = "offline"
+        else:
+            ollama_state = "online"
 
     project_root = settings.project_root
     if not project_root:
@@ -304,6 +312,7 @@ def session_diagnostics(
         project_root=project_root,
         message_count=len(session.get_history()),
         client_state="initialized" if client is not None else "not started",
+        ollama_state=ollama_state if settings.provider != "ollama" else provider_state,
     )
 
 

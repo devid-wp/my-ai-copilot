@@ -32,6 +32,7 @@ def test_ollama_diagnostics_report_model_and_tools(monkeypatch):
     assert diagnostics.tools_state == "supported"
     assert diagnostics.message_count == 2
     assert diagnostics.client_state == "initialized"
+    assert diagnostics.ollama_state == "online"
     assert session.reloaded is True
 
 

@@ -15,6 +15,7 @@ class SessionDiagnostics:
     project_root: str
     message_count: int
     client_state: str
+    ollama_state: str = "unknown"
 
 
 __all__ = ["SessionDiagnostics"]

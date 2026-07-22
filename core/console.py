@@ -187,10 +187,6 @@ class Console:
             ),
         )
         table.add_row(
-            "tools",
-            Text(diagnostics.tools_state, style=self._state_color(diagnostics.tools_state)),
-        )
-        table.add_row(
             "mode",
             Text(diagnostics.mode, style=PURPLE if diagnostics.mode == "agent" else CYAN),
         )
@@ -201,8 +197,10 @@ class Console:
                 style=YELLOW if diagnostics.permissions == "auto" else GREEN,
             ),
         )
-        table.add_row("project", diagnostics.project_root)
+        table.add_row("working directory", diagnostics.project_root)
         table.add_row("messages", str(diagnostics.message_count))
+        table.add_row("tool calling", diagnostics.tools_state)
+        table.add_row("ollama", Text(diagnostics.ollama_state, style=self._state_color(diagnostics.ollama_state)))
         table.add_row("client", diagnostics.client_state)
         self.output.print(Panel(table, title="[bold]Session[/bold]", border_style=MUTED, box=box.ROUNDED))
 
