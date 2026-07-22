@@ -224,7 +224,7 @@ class Console:
     def activity(self, message: str) -> None:
         self.output.print(Text.assemble(("◇ ", CYAN), (message, MUTED)))
 
-    def agent_summary(self, records: list[ToolRunRecord]) -> None:
+    def agent_summary(self, records: list[ToolRunRecord], project_root: str = "") -> None:
         if not records:
             return
         table = Table.grid(padding=(0, 1))
@@ -237,9 +237,14 @@ class Console:
             table.add_row(symbol, record.name, self._shorten(record.detail))
         if len(records) > 12:
             table.add_row(Text("…", style=MUTED), f"{len(records) - 12} earlier action(s)", "")
-        self.output.print(
-            Panel(table, title="[bold]Agent summary[/bold]", border_style=MUTED, box=box.ROUNDED)
+        self.output.print(Panel(table, title="[bold]Готово[/bold]", border_style=GREEN, box=box.ROUNDED))
+        changed = next(
+            (record.detail for record in reversed(records) if record.name in {"create_file", "edit_file"} and record.detail),
+            "",
         )
+        if changed:
+            path = changed if os.path.isabs(changed) else os.path.abspath(os.path.join(project_root, changed))
+            self.output.print(Text.assemble(("Путь: ", MUTED), (path, "bold white")))
 
     def tool(self, name: str, arguments: dict[str, Any]) -> None:
         action = TOOL_ACTIONS.get(name, "TOOL")

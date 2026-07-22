@@ -487,9 +487,9 @@ def run_agent(
                     f"Модель напечатала псевдовызов {pseudo_name} вместо native tool call. "
                     "Выберите модель с надёжной поддержкой tools."
                 )
-                console.agent_summary(guard.records)
+                console.agent_summary(guard.records, project_root)
                 return
-            console.agent_summary(guard.records)
+            console.agent_summary(guard.records, project_root)
             console.success("Задача завершена")
             return
 
@@ -529,27 +529,27 @@ def run_agent(
             )
             console.tool_result(result)
             if result.get("code") == "UNKNOWN_TOOL":
-                console.agent_summary(guard.records)
+                console.agent_summary(guard.records, project_root)
                 console.error(
                     f"Модель запросила неизвестный инструмент: {name}. Агент остановлен."
                 )
                 return
             if result.get("code") == "PATH_OUTSIDE_PROJECT":
-                console.agent_summary(guard.records)
+                console.agent_summary(guard.records, project_root)
                 console.error(
                     "Путь находится вне рабочей папки. Смените её командой "
                     f"/project <path> (сейчас: {project_root}) и повторите запрос."
                 )
                 return
         if guard.error_limit_reached:
-            console.agent_summary(guard.records)
+            console.agent_summary(guard.records, project_root)
             console.error(
                 f"Агент остановлен после {guard.consecutive_errors} последовательных ошибок."
             )
             return
         memory.trim(50)
 
-    console.agent_summary(guard.records)
+    console.agent_summary(guard.records, project_root)
     console.error(f"Достигнут лимит в {limits.max_steps} шагов.")
 
 
