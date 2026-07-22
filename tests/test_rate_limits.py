@@ -15,3 +15,12 @@ def test_successful_check_is_also_cached_for_one_minute():
     monitor.record_success("gemini", now=10)
     assert monitor.can_check("gemini", now=20) is False
     assert monitor.can_check("gemini", now=70) is True
+
+
+def test_failed_key_check_is_not_reported_as_available_and_can_be_cleared():
+    monitor = RateLimitMonitor(refresh_seconds=60)
+    monitor.record_error("gemini", RuntimeError("invalid API key"), now=10)
+    assert "failed" in monitor.describe("gemini", now=20)
+
+    monitor.clear("gemini")
+    assert monitor.describe("gemini", now=20) == "not checked"

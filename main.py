@@ -357,9 +357,15 @@ def handle_slash(
         console.activity(f"Лимиты {provider}: {rate_limit_monitor.describe(provider)}")
         action = console.choose("Действие", ["Проверить", "Заменить", "Удалить", "Отмена"])
         if action == "Заменить":
-            configure_provider_key(provider, console, allow_replacement=True)
+            if configure_provider_key(provider, console, allow_replacement=True):
+                rate_limit_monitor.clear(provider)
+                if provider == settings.provider:
+                    client = None
         elif action == "Удалить":
             delete_api_key(provider)
+            rate_limit_monitor.clear(provider)
+            if provider == settings.provider:
+                client = None
             console.success(f"Ключ {provider.upper()} удалён")
         elif action == "Проверить":
             if not rate_limit_monitor.can_check(provider):

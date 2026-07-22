@@ -200,3 +200,18 @@ def test_project_command_rejects_missing_directory(tmp_path):
 
     assert settings.project_root == "C:/old-project"
     assert client is client_instance
+
+
+def test_replacing_active_provider_key_resets_client_and_cached_check(monkeypatch):
+    monkeypatch.setattr("main.configure_provider_key", lambda *_args, **_kwargs: True)
+    cleared: list[str] = []
+    monkeypatch.setattr("main.rate_limit_monitor.clear", cleared.append)
+    settings = SessionSettings(provider="gemini")
+    console = FakeConsole(choice="gemini")
+
+    choices = iter(["gemini", "Заменить"])
+    console.choose = lambda _title, _options: next(choices)
+    client, _ = handle_slash(("keys", ""), settings, console, FakeSession(), object())
+
+    assert client is None
+    assert cleared == ["gemini"]

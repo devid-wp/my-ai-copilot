@@ -13,6 +13,7 @@ class LimitSnapshot:
     checked_at: float
     next_check_at: float
     limited: bool
+    available: bool
     message: str
 
 
@@ -32,7 +33,7 @@ class RateLimitMonitor:
         return self.seconds_until_refresh(provider, now) == 0
 
     def record_success(self, provider: str, now: float | None = None) -> LimitSnapshot:
-        return self._record(provider, False, "API available", now)
+        return self._record(provider, False, True, "API available", now)
 
     def record_error(self, provider: str, error: Exception, now: float | None = None) -> LimitSnapshot:
         text = str(error)
@@ -42,20 +43,25 @@ class RateLimitMonitor:
             for marker in ("resourceexhausted", "rate limit", "request limit", "too many requests", "429")
         )
         message = "Request limit reached" if limited else text
-        return self._record(provider, limited, message, now)
+        return self._record(provider, limited, False, message, now)
+
+    def clear(self, provider: str) -> None:
+        """Discard a cached result after credentials change."""
+        self._snapshots.pop(provider, None)
 
     def describe(self, provider: str, now: float | None = None) -> str:
         snapshot = self._snapshots.get(provider)
         if snapshot is None:
             return "not checked"
         remaining = self.seconds_until_refresh(provider, now)
-        state = "limit reached" if snapshot.limited else "available"
+        state = "limit reached" if snapshot.limited else "available" if snapshot.available else "failed"
         return f"{state}; refresh in {remaining}s" if remaining else f"{state}; ready to refresh"
 
     def _record(
         self,
         provider: str,
         limited: bool,
+        available: bool,
         message: str,
         now: float | None,
     ) -> LimitSnapshot:
@@ -64,6 +70,7 @@ class RateLimitMonitor:
             checked_at=current,
             next_check_at=current + self.refresh_seconds,
             limited=limited,
+            available=available,
             message=message,
         )
         self._snapshots[provider] = snapshot
