@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
+from contextvars import ContextVar
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from core.security import (
     _setup_logger,
     ensure_mutation_safe,
     ensure_path_safe,
+    is_path_inside_root,
     parse_command,
 )
 from core.tools import (
@@ -33,6 +35,7 @@ from core.undo import backup_file
 
 MAX_READ_BYTES = 50 * 1024
 MAX_OUTPUT_CHARS = 20_000
+_EXTERNAL_ROOTS: ContextVar[tuple[Path, ...]] = ContextVar("citadex_external_roots", default=())
 
 
 def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str, limit: int = 40) -> str:
@@ -68,12 +71,35 @@ def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str,
     return "\n".join(visible) or str(args["path"])
 
 
-def _target(project_root: str, raw_path: str, *, mutation: bool = False) -> Path:
+def _target(
+    project_root: str,
+    raw_path: str,
+    *,
+    mutation: bool = False,
+    external_roots: set[Path] | None = None,
+) -> Path:
     root = Path(project_root).resolve()
     raw = Path(raw_path)
-    candidate = raw if raw.is_absolute() else root / raw
+    candidate = (raw if raw.is_absolute() else root / raw).resolve()
     validator = ensure_mutation_safe if mutation else ensure_path_safe
-    return validator(candidate, root)
+    if is_path_inside_root(candidate, root):
+        return validator(candidate, root)
+    for external_root in external_roots if external_roots is not None else _EXTERNAL_ROOTS.get():
+        allowed = external_root.resolve()
+        if is_path_inside_root(candidate, allowed):
+            validation_root = allowed.parent if mutation else allowed
+            return validator(candidate, validation_root)
+    raise PermissionError(f"Path '{candidate}' is outside project root '{root}'.")
+
+
+def _backup_project_file(path: Path, project_root: str) -> None:
+    """Create an undo snapshot when the target belongs to the active project."""
+    if is_path_inside_root(path, project_root):
+        backup_file(path, project_root)
+
+
+def _is_project_ignored(path: Path, project_root: str) -> bool:
+    return is_path_inside_root(path, project_root) and is_ignored_path(path, project_root)
 
 
 def create_file(
@@ -82,7 +108,7 @@ def create_file(
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
     exists = path.exists()
-    backup_file(path, project_root)
+    _backup_project_file(path, project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = str(args.get("content", ""))
     temporary = path.with_name(f".{path.name}.citadex.tmp")
@@ -122,7 +148,7 @@ def edit_file(
             raise ValueError("Overlapping patches are not allowed.")
     for start, end, replacement in ordered:
         lines[start - 1 : end - 1] = [replacement]
-    backup_file(path, project_root)
+    _backup_project_file(path, project_root)
     temporary = path.with_name(f".{path.name}.citadex.tmp")
     temporary.write_text("".join(lines), encoding="utf-8", newline="\n")
     temporary.replace(path)
@@ -138,7 +164,7 @@ def delete_file(
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {args['path']}")
     if path.is_file():
-        backup_file(path, project_root)
+        _backup_project_file(path, project_root)
     action = "delete directory" if path.is_dir() else "delete file"
     if path.is_dir():
         shutil.rmtree(path)
@@ -201,7 +227,7 @@ def list_directory(
         (
             {"name": item.name, "is_dir": item.is_dir()}
             for item in path.iterdir()
-            if not is_ignored_path(item, project_root)
+            if not _is_project_ignored(item, project_root)
         ),
         key=lambda item: (not item["is_dir"], str(item["name"]).lower()),
     )
@@ -213,7 +239,7 @@ def read_file(
     project_root: str,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]))
-    if is_ignored_path(path, project_root):
+    if _is_project_ignored(path, project_root):
         raise PermissionError(f"Path is excluded by .citadexignore: {args['path']}")
     if not path.is_file():
         raise FileNotFoundError(str(path))
@@ -241,11 +267,11 @@ def search_in_files(
             for name in dirs
             if name not in skip
             and not name.startswith(".")
-            and not is_ignored_path(Path(current) / name, project_root)
+            and not _is_project_ignored(Path(current) / name, project_root)
         ]
         for name in files:
             path = Path(current) / name
-            if is_ignored_path(path, project_root):
+            if _is_project_ignored(path, project_root):
                 continue
             if path.suffix.lower() not in extensions:
                 continue
@@ -275,11 +301,15 @@ def search_in_files(
 def move_file(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     source = _target(project_root, str(args["source"]), mutation=True)
     destination = _target(project_root, str(args["destination"]), mutation=True)
-    if not source.is_file():
+    if not source.exists():
         raise FileNotFoundError(str(source))
-    backup_file(destination, project_root)
+    _backup_project_file(destination, project_root)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    source.replace(destination)
+    if source.is_dir() and destination.is_dir():
+        if any(destination.iterdir()):
+            raise FileExistsError(f"Destination directory is not empty: {destination}")
+        destination.rmdir()
+    shutil.move(str(source), str(destination))
     return {"status": "moved", "source": str(source), "path": str(destination)}
 
 
@@ -288,7 +318,7 @@ def copy_file(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     destination = _target(project_root, str(args["destination"]), mutation=True)
     if not source.is_file():
         raise FileNotFoundError(str(source))
-    backup_file(destination, project_root)
+    _backup_project_file(destination, project_root)
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     return {"status": "copied", "source": str(source), "path": str(destination)}
@@ -299,13 +329,13 @@ def file_exists(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     return {
         "status": "checked",
         "path": str(path),
-        "exists": path.exists() and not is_ignored_path(path, project_root),
+        "exists": path.exists() and not _is_project_ignored(path, project_root),
     }
 
 
 def get_file_info(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]))
-    if is_ignored_path(path, project_root):
+    if _is_project_ignored(path, project_root):
         raise PermissionError(f"Path is excluded by .citadexignore: {args['path']}")
     stat = path.stat()
     return {
@@ -380,7 +410,7 @@ def format_code(args: dict[str, Any], project_root: str) -> dict[str, Any]:
         command = f"go fmt {relative}"
     else:
         raise RuntimeError(f"No supported formatter for: {relative}")
-    backup_file(path, project_root)
+    _backup_project_file(path, project_root)
     result = execute_cmd({"command": command}, project_root)
     result["format_command"] = command
     return result
@@ -411,8 +441,39 @@ def create_tool_registry(
     approve: ApprovalCallback | None = None,
     *,
     auto_approve: bool = False,
+    approve_external: Callable[[str], bool] | None = None,
+    approved_external_paths: set[str] | None = None,
 ) -> ToolRegistry:
     """Build the runtime registry with handlers bound to one project."""
+
+    external_paths = approved_external_paths if approved_external_paths is not None else set()
+
+    def execute_scoped(
+        arguments: dict[str, Any],
+        *,
+        handler: Callable[..., dict[str, Any]],
+    ) -> dict[str, Any]:
+        root = Path(project_root).resolve()
+        approved_roots = {Path(path).resolve() for path in external_paths}
+        for key in ("path", "source", "destination"):
+            raw_path = arguments.get(key)
+            if not raw_path or not Path(str(raw_path)).is_absolute():
+                continue
+            candidate = Path(str(raw_path)).resolve()
+            if is_path_inside_root(candidate, root) or any(
+                is_path_inside_root(candidate, allowed) for allowed in approved_roots
+            ):
+                continue
+            if approve_external is None or not approve_external(str(candidate)):
+                raise PermissionError(f"External path access was not approved: '{candidate}'.")
+            external_paths.add(str(candidate))
+            approved_roots.add(candidate)
+
+        token = _EXTERNAL_ROOTS.set(tuple(approved_roots))
+        try:
+            return handler(arguments, project_root=project_root)
+        finally:
+            _EXTERNAL_ROOTS.reset(token)
 
     def request_approval(request: PermissionRequest) -> bool:
         detail = preview_file_change(request.tool_name, request.arguments, project_root)
@@ -424,7 +485,7 @@ def create_tool_registry(
         handler = FUNCTION_MAP[definition.name]
         registry.register(
             definition,
-            partial(handler, project_root=project_root),
+            partial(execute_scoped, handler=handler),
         )
     return registry
 

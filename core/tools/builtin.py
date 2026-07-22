@@ -154,7 +154,7 @@ BUILTIN_TOOL_DEFINITIONS += tuple(
     for name, description, properties, required, risk in (
         (
             "move_file",
-            "Move a file to another path inside the project.",
+            "Move a file or directory. The destination directory is created by this tool when needed.",
             {"source": {"type": "string"}, "destination": {"type": "string"}},
             ["source", "destination"],
             ToolRisk.PROJECT_WRITE,

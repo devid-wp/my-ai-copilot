@@ -538,6 +538,7 @@ def run_agent(
     max_tool_calls: int = 100,
     max_seconds: int = 300,
     max_estimated_tokens: int = 32_000,
+    approved_external_paths: set[str] | None = None,
 ) -> None:
     memory = AgentMemory(str(Path(project_root) / "logs" / "session.json"), username)
     memory.add("user", prompt)
@@ -552,7 +553,19 @@ def run_agent(
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
-    tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
+    def approve_external(path: str) -> bool:
+        return console.confirm(
+            "Разрешить доступ вне рабочей папки?",
+            f"{path}\nРазрешение запомнится до закрытия Citadex.",
+        )
+
+    tool_registry = create_tool_registry(
+        project_root,
+        approve,
+        auto_approve=auto_approve,
+        approve_external=approve_external,
+        approved_external_paths=approved_external_paths,
+    )
     prompt_cache = PromptCache(lambda: build_system_prompt(project_root, username, memory))
 
     for _step in range(1, limits.max_steps + 1):
@@ -735,6 +748,7 @@ def main(argv: list[str] | None = None) -> int:
         if settings.agent and not verify_tool_compatibility(settings, console):
             return 2
     client = None
+    approved_external_paths: set[str] = set()
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
     console.hint("/project · /provider · /model · /mode · /permissions · /help")
     if settings.auto_approve:
@@ -759,6 +773,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.max_tool_calls,
                     args.max_seconds,
                     args.max_estimated_tokens,
+                    approved_external_paths,
                 )
             else:
                 run_chat(client, args.oneshot, console)
@@ -804,6 +819,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.max_tool_calls,
                     args.max_seconds,
                     args.max_estimated_tokens,
+                    approved_external_paths,
                 )
             else:
                 run_chat(client, prompt, console)
