@@ -116,6 +116,17 @@ SKIP_FILES = {
 
 MAX_FILE_SIZE = 15_000  # 15 KB на файл
 MAX_TOTAL_SIZE = 80_000  # 80 KB общий лимит контекста
+MAX_INSTRUCTIONS_SIZE = 12_000
+
+
+def get_project_instructions(project_root: str) -> str:
+    """Load trusted, bounded repository guidance for the agent."""
+    path = os.path.join(project_root, ".citadex.md")
+    try:
+        with open(path, encoding="utf-8") as stream:
+            return stream.read(MAX_INSTRUCTIONS_SIZE).strip()
+    except OSError:
+        return "— no project-specific instructions —"
 
 
 def _should_read(fname):

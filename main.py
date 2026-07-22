@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from core.agent_executor import create_tool_registry, tool_result_payload
 from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
 from core.console import Console
-from core.context_manager import get_git_log, get_project_context
+from core.context_manager import get_git_log, get_project_context, get_project_instructions
 from core.credentials import (
     PROVIDER_API_KEYS,
     credential_status,
@@ -75,6 +75,7 @@ if sys.platform == "win32":
 def build_system_prompt(project_root: str, username: str, memory: AgentMemory) -> str:
     return SYSTEM_PROMPT_TEMPLATE.format(
         project_root=project_root,
+        project_instructions=get_project_instructions(project_root),
         project_tree=get_project_context(project_root),
         current_user=username,
         team_activity=memory.get_summary() or "— нет данных —",
