@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from core.router import classify_prompt
+from core.runtime_config import response_temperature, response_token_limit
 from core.tool_protocol import provider_tool_schemas
 
 TOOLS = provider_tool_schemas()
@@ -55,9 +57,6 @@ class OllamaClient:
         return probe_tool_support(self.base_url, model)
 
     def select_model(self, prompt: str) -> str:
-from core.router import classify_prompt
-from core.runtime_config import response_temperature, response_token_limit
-
         return self.model_code if classify_prompt(prompt) == "code" else self.model_chat
 
     def ask_stream(
@@ -209,10 +208,7 @@ def probe_tool_support(base_url: str, model: str) -> ToolCompatibility:
         "messages": [
             {
                 "role": "user",
-                "content": (
-                    "Call compatibility_probe now with value set to ok. "
-                    "Do not answer with text."
-                ),
+                "content": ("Call compatibility_probe now with value set to ok. Do not answer with text."),
             }
         ],
         "stream": False,
