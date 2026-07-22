@@ -287,6 +287,30 @@ def get_file_info(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     }
 
 
+def _run_git(arguments: list[str], project_root: str) -> dict[str, Any]:
+    result = subprocess.run(
+        ["git", *arguments], cwd=Path(project_root).resolve(), capture_output=True,
+        text=True, timeout=15,
+    )
+    return {
+        "status": "completed" if result.returncode == 0 else "failed",
+        "stdout": result.stdout[-MAX_OUTPUT_CHARS:], "stderr": result.stderr[-MAX_OUTPUT_CHARS:],
+        "returncode": result.returncode,
+    }
+
+
+def git_status(_args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    return _run_git(["status", "--short", "--branch"], project_root)
+
+
+def git_diff(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    arguments = ["diff", "--no-ext-diff", "--"]
+    if args.get("path"):
+        path = _target(project_root, str(args["path"]))
+        arguments.append(path.relative_to(Path(project_root).resolve()).as_posix())
+    return _run_git(arguments, project_root)
+
+
 FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "create_file": create_file,
     "edit_file": edit_file,
@@ -300,6 +324,8 @@ FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "copy_file": copy_file,
     "file_exists": file_exists,
     "get_file_info": get_file_info,
+    "git_status": git_status,
+    "git_diff": git_diff,
 }
 
 

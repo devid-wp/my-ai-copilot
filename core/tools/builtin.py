@@ -183,4 +183,23 @@ BUILTIN_TOOL_DEFINITIONS += tuple(
     )
 )
 
+BUILTIN_TOOL_DEFINITIONS += (
+    ToolDefinition(
+        name="git_status",
+        description="Show the concise Git branch and working-tree status.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        risk=ToolRisk.READ_ONLY,
+    ),
+    ToolDefinition(
+        name="git_diff",
+        description="Show a bounded Git diff for the working tree or one path.",
+        input_schema={
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "Optional project-relative path."}},
+            "required": [],
+        },
+        risk=ToolRisk.READ_ONLY,
+    ),
+)
+
 __all__ = ["BUILTIN_TOOL_DEFINITIONS"]
