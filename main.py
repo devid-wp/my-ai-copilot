@@ -29,8 +29,8 @@ from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
-from core.router import should_use_agent
-from core.tools import AgentLimits, ToolCall, ToolResult, ToolStatus
+from core.router import is_read_only_intent, should_use_agent
+from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -517,6 +517,7 @@ def run_agent(
     limits = AgentLimits(max_steps=max_steps)
     guard = AgentLoopGuard(limits)
     console.execution_plan(execution_plan(prompt))
+    read_only = is_read_only_intent(prompt)
 
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
@@ -565,6 +566,17 @@ def run_agent(
                     arguments=arguments,
                 )
                 guard_error = guard.inspect(call)
+                if read_only and name in {
+                    "create_file",
+                    "edit_file",
+                    "delete_file",
+                    "make_directory",
+                    "execute_cmd",
+                }:
+                    guard_error = ToolError(
+                        code="READ_ONLY_INTENT",
+                        message="Inspection-only request: workspace mutation was blocked.",
+                    )
                 typed_result = (
                     ToolResult(
                         call_id=call.id,
@@ -647,12 +659,22 @@ def main(argv: list[str] | None = None) -> int:
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
     provider = args.provider or preferences.provider or os.getenv("LLM_PROVIDER", "nvidia")
     preferred_model = args.model or preferences.models.get(provider)
-    settings = SessionSettings(provider, preferred_model, args.agent, args.yes)
+    settings = SessionSettings(
+        provider,
+        preferred_model,
+        args.agent or preferences.mode == "agent",
+        args.yes or preferences.permissions == "auto",
+    )
     settings.project_root = project_root
     interactive_setup = not args.oneshot and not args.skip_setup
     if interactive_setup:
         try:
-            configured = bool(preferences.project_root and preferences.models.get(settings.provider))
+            key_name = PROVIDER_API_KEYS.get(settings.provider)
+            configured = bool(
+                preferences.project_root
+                and preferences.models.get(settings.provider)
+                and (key_name is None or os.getenv(key_name))
+            )
             quick = configured and console.quick_start(session_diagnostics(settings, session, None))
             if not quick:
                 settings.project_root = choose_recent_project(console, preferences, settings.project_root)

@@ -36,6 +36,8 @@ def detect_intent(prompt: str | None) -> PromptIntent:
     if not text:
         return PromptIntent.CHAT
     if any(re.search(pattern, text) for pattern in _EXPLANATION_PATTERNS):
+        if re.search(r"\b(?:what|что)\b", text) and _CODE_CONTEXT.search(text):
+            return PromptIntent.READ_ONLY
         if not any(re.search(pattern, text) for pattern in _READ_ONLY_PATTERNS):
             return PromptIntent.CHAT
         return PromptIntent.READ_ONLY if _CODE_CONTEXT.search(text) else PromptIntent.CHAT
