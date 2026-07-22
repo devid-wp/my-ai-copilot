@@ -31,6 +31,7 @@ from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_catalog import nvidia_models, select_nvidia_model
+from core.rate_limits import rate_limit_monitor
 from core.router import is_read_only_intent, should_use_agent
 from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolError, ToolResult, ToolStatus
@@ -353,6 +354,7 @@ def handle_slash(
         )
         console.activity(f"API-ключи: {summary}")
         provider = console.choose("Провайдер ключа", list(PROVIDER_API_KEYS))
+        console.activity(f"Лимиты {provider}: {rate_limit_monitor.describe(provider)}")
         action = console.choose("Действие", ["Проверить", "Заменить", "Удалить", "Отмена"])
         if action == "Заменить":
             configure_provider_key(provider, console, allow_replacement=True)
@@ -360,12 +362,26 @@ def handle_slash(
             delete_api_key(provider)
             console.success(f"Ключ {provider.upper()} удалён")
         elif action == "Проверить":
+            if not rate_limit_monitor.can_check(provider):
+                console.warning(
+                    "Лимиты API обновляются раз в минуту. "
+                    f"Следующая проверка через {rate_limit_monitor.seconds_until_refresh(provider)} сек."
+                )
+                return client, False
             try:
                 probe = create_client(provider, None, "Reply with OK.")
-                next(iter(probe.ask_stream("OK")))
+                list(probe.ask_stream("Reply with OK."))
             except Exception as exc:
-                console.error(f"Проверка ключа не пройдена: {exc}")
+                snapshot = rate_limit_monitor.record_error(provider, exc)
+                if snapshot.limited:
+                    console.warning(
+                        "Лимит запросов исчерпан. Состояние автоматически станет доступно "
+                        "для новой проверки через 60 секунд."
+                    )
+                else:
+                    console.error(f"Проверка ключа не пройдена: {exc}")
             else:
+                rate_limit_monitor.record_success(provider)
                 console.success(f"Ключ {provider.upper()} работает")
         return client, False
     if command == "undo":
