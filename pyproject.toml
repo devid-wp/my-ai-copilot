@@ -34,7 +34,7 @@ citadex = "main:main"
 
 [tool.setuptools]
 packages = ["core", "core.tools"]
-py-modules = ["main", "citadex_windows"]
+py-modules = ["main", "citadex_windows", "citadex_api"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
