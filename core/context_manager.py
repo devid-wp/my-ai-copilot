@@ -191,7 +191,11 @@ def get_project_context(project_root):
             total_size += len(content)
 
     # Собираем контекст
+    from core.project_environment import detect_project_environment
+
     parts = [
+        detect_project_environment(project_root).render(),
+        "",
         f"Project: {project_root}",
         "",
         "File tree:",
