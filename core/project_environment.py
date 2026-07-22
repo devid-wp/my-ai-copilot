@@ -6,8 +6,12 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import tomllib
+try:
+    import tomllib  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +68,12 @@ def detect_project_environment(project_root: str) -> ProjectEnvironment:
         except (OSError, tomllib.TOMLDecodeError):
             data = {}
         dependencies = " ".join(data.get("project", {}).get("dependencies", [])).casefold()
-        for package, framework in (("django", "Django"), ("fastapi", "FastAPI"), ("flask", "Flask")):
-            if package in dependencies:
+        for dependency_name, framework in (
+            ("django", "Django"),
+            ("fastapi", "FastAPI"),
+            ("flask", "Flask"),
+        ):
+            if dependency_name in dependencies:
                 frameworks.add(framework)
         run_commands.append("python -m <package>")
         test_commands.append("pytest")
@@ -74,19 +82,22 @@ def detect_project_environment(project_root: str) -> ProjectEnvironment:
     if package_json.is_file():
         languages.add("TypeScript" if (root / "tsconfig.json").is_file() else "JavaScript")
         try:
-            package = json.loads(package_json.read_text(encoding="utf-8"))
+            package_data: dict[str, Any] = json.loads(package_json.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            package = {}
-        dependencies = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
+            package_data = {}
+        node_dependencies = {
+            **package_data.get("dependencies", {}),
+            **package_data.get("devDependencies", {}),
+        }
         for name, framework in (
             ("next", "Next.js"),
             ("react", "React"),
             ("vue", "Vue"),
             ("@angular/core", "Angular"),
         ):
-            if name in dependencies:
+            if name in node_dependencies:
                 frameworks.add(framework)
-        scripts = package.get("scripts", {})
+        scripts = package_data.get("scripts", {})
         run_commands.extend(f"npm run {name}" for name in ("dev", "start", "build") if name in scripts)
         test_commands.extend(f"npm run {name}" for name in ("test", "test:unit") if name in scripts)
 

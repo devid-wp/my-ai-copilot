@@ -2,7 +2,7 @@
 
 from core.tools.models import ToolDefinition, ToolRisk
 
-BUILTIN_TOOL_DEFINITIONS = (
+BUILTIN_TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
     ToolDefinition(
         name="create_file",
         description="Create a new file or overwrite an existing one with the given content.",
@@ -207,7 +207,9 @@ BUILTIN_TOOL_DEFINITIONS += (
         name="run_tests",
         description="Run the project's detected test command, optionally scoped to one path.",
         input_schema={
-            "type": "object", "properties": {"path": {"type": "string"}}, "required": [],
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": [],
         },
         risk=ToolRisk.COMMAND_WRITE,
     ),
@@ -215,7 +217,9 @@ BUILTIN_TOOL_DEFINITIONS += (
         name="format_code",
         description="Run the project's standard formatter on one project-relative path.",
         input_schema={
-            "type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"],
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
         },
         risk=ToolRisk.COMMAND_WRITE,
     ),
