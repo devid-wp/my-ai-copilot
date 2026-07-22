@@ -121,6 +121,9 @@ class Console:
             is_password=True,
         )
 
+    def input(self, label: str) -> str:
+        return self._read(f"{label} ❯ ", HTML(f"<brand>{label}</brand> <prompt>❯</prompt> "))
+
     def choose(self, title: str, options: list[str], default: str | None = None) -> str:
         if default not in options:
             default = None

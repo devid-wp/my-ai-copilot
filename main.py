@@ -238,6 +238,22 @@ def run_startup_setup(
     return True
 
 
+def choose_recent_project(console: Console, preferences: UserPreferences, current: str) -> str:
+    """Offer existing recent directories and fall back to a typed path."""
+    recent = [path for path in preferences.recent_projects if Path(path).is_dir()]
+    if current not in recent:
+        recent.insert(0, current)
+    labels = [f"{Path(path).name} — {path}" for path in recent[:3]]
+    other = "Выбрать другую папку"
+    selected = console.choose("Рабочая папка", [*labels, other], default=labels[0])
+    candidate = console.input("Путь к папке").strip() if selected == other else recent[labels.index(selected)]
+    target = Path(candidate).expanduser().resolve()
+    if not target.is_dir():
+        console.error(f"Папка не найдена: {target}")
+        return current
+    return str(target)
+
+
 def session_diagnostics(
     settings: SessionSettings,
     session: AgentMemory,
@@ -600,6 +616,9 @@ def main(argv: list[str] | None = None) -> int:
     interactive_setup = not args.oneshot and not args.skip_setup
     if interactive_setup:
         try:
+            settings.project_root = choose_recent_project(console, preferences, settings.project_root)
+            project_root = settings.project_root
+            session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
             if not run_startup_setup(settings, console, preferences):
                 return 2
         except (EOFError, KeyboardInterrupt):
