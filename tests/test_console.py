@@ -65,9 +65,7 @@ def test_tool_call_rendering_is_compact_and_hides_file_content(monkeypatch):
         "create_file",
         {"path": "src/example.py", "content": "super secret content"},
     )
-    console.tool_result(
-        {"status": "created", "path": "C:/project/src/example.py", "bytes": 20}
-    )
+    console.tool_result({"status": "created", "path": "C:/project/src/example.py", "bytes": 20})
 
     rendered = stream.getvalue()
     assert "WRITE" in rendered
@@ -107,7 +105,7 @@ def test_agent_summary_lists_actions(monkeypatch):
     console.agent_summary([ToolRunRecord("create_file", ToolStatus.SUCCESS, "page.html")])
 
     rendered = stream.getvalue()
-    assert "Agent summary" in rendered
+    assert "Готово" in rendered
     assert "create_file" in rendered
     assert "page.html" in rendered
 

@@ -39,7 +39,10 @@ def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str,
     """Return a bounded unified diff suitable for an approval prompt."""
     if tool_name not in {"create_file", "edit_file"} or "path" not in args:
         return str(args.get("path") or args.get("command") or tool_name)
-    path = _target(project_root, str(args["path"]))
+    try:
+        path = _target(project_root, str(args["path"]))
+    except PermissionError:
+        return str(args["path"])
     before = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
     if tool_name == "create_file":
         after = str(args.get("content", ""))

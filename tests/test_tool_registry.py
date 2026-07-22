@@ -175,6 +175,14 @@ def test_builtin_registry_contains_every_runtime_tool(tmp_path):
         "list_directory",
         "read_file",
         "search_in_files",
+        "move_file",
+        "copy_file",
+        "file_exists",
+        "get_file_info",
+        "git_status",
+        "git_diff",
+        "run_tests",
+        "format_code",
     }
 
 
@@ -182,9 +190,7 @@ def test_builtin_registry_executes_bound_read_tool(tmp_path):
     (tmp_path / "hello.txt").write_text("hello", encoding="utf-8")
     registry = create_tool_registry(str(tmp_path))
 
-    result = registry.execute(
-        ToolCall(id="call_read", name="read_file", arguments={"path": "hello.txt"})
-    )
+    result = registry.execute(ToolCall(id="call_read", name="read_file", arguments={"path": "hello.txt"}))
 
     assert result.status is ToolStatus.SUCCESS
     assert result.content["content"] == "hello"

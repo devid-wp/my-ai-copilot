@@ -17,6 +17,7 @@ def test_system_prompt_template_placeholders():
         current_user="testdev",
         team_activity="— нет данных —",
         git_log="abc1234 Initial commit",
+        project_instructions="- Run tests",
     )
     assert "/test/root" in formatted
     assert "file.py" in formatted

@@ -73,10 +73,7 @@ class AgentLoopGuard:
         if count > self.limits.max_repeated_calls:
             return ToolError(
                 code="REPEATED_TOOL_CALL",
-                message=(
-                    f"Blocked repeated call to {call.name}; "
-                    f"limit is {self.limits.max_repeated_calls}."
-                ),
+                message=(f"Blocked repeated call to {call.name}; limit is {self.limits.max_repeated_calls}."),
             )
         return None
 
@@ -101,6 +98,14 @@ class AgentLoopGuard:
                 )
             )
 
+    def record_invalid_call(self, name: str) -> None:
+        self.records.append(ToolRunRecord(name=name or "unknown", status=ToolStatus.ERROR, detail=""))
+        self.consecutive_errors += 1
+
+    @property
+    def error_limit_reached(self) -> bool:
+        return self.consecutive_errors >= self.limits.max_consecutive_errors
+
 
 def recovery_advice(code: str, project_root: str) -> str:
     """Return a concrete next action without leaking tool internals."""
@@ -111,14 +116,6 @@ def recovery_advice(code: str, project_root: str) -> str:
     if code in {"REPEATED_TOOL_CALL", "RETRY_WITHOUT_CHANGE"}:
         return "Измените аргументы или способ выполнения; одинаковый вызов повторён не будет."
     return "Проверьте входные данные инструмента и повторите запрос с исправленными параметрами."
-
-    def record_invalid_call(self, name: str) -> None:
-        self.records.append(ToolRunRecord(name=name or "unknown", status=ToolStatus.ERROR, detail=""))
-        self.consecutive_errors += 1
-
-    @property
-    def error_limit_reached(self) -> bool:
-        return self.consecutive_errors >= self.limits.max_consecutive_errors
 
 
 def pseudo_tool_name(response: str) -> str | None:
