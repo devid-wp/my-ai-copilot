@@ -22,7 +22,9 @@ class UserPreferences:
     def remember_project(self, project_root: str, limit: int = 5) -> None:
         resolved = str(Path(project_root).expanduser().resolve())
         self.project_root = resolved
-        self.recent_projects = [resolved, *(item for item in self.recent_projects if item != resolved)][:limit]
+        self.recent_projects = [resolved, *(item for item in self.recent_projects if item != resolved)][
+            :limit
+        ]
 
 
 def preferences_path() -> Path:
@@ -41,9 +43,7 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
     permissions = str(payload.get("permissions", "ask"))
     raw_models = payload.get("models")
     models = (
-        {str(name): str(model) for name, model in raw_models.items()}
-        if isinstance(raw_models, dict)
-        else {}
+        {str(name): str(model) for name, model in raw_models.items()} if isinstance(raw_models, dict) else {}
     )
     if provider not in {"nvidia", "gemini", "ollama"}:
         provider = "nvidia"
@@ -57,7 +57,9 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         permissions=permissions,
         models=models,
         project_root=str(payload.get("project_root", "")),
-        recent_projects=[str(item) for item in payload.get("recent_projects", []) if isinstance(item, str)][:5],
+        recent_projects=[str(item) for item in payload.get("recent_projects", []) if isinstance(item, str)][
+            :5
+        ],
     )
 
 

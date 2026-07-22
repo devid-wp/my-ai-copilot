@@ -6,8 +6,8 @@ from typing import Any
 
 from openai import OpenAI
 
-from core.tool_protocol import provider_tool_schemas
 from core.router import classify_prompt
+from core.tool_protocol import provider_tool_schemas
 
 TOOLS = provider_tool_schemas()
 

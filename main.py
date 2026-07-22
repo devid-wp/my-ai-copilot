@@ -30,8 +30,8 @@ from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.router import is_read_only_intent, should_use_agent
-from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 from core.tool_protocol import normalize_tool_call
+from core.tools import AgentLimits, ToolError, ToolResult, ToolStatus
 from core.undo import undo_last_action
 from core.verification import verify_agent_changes
 
@@ -132,8 +132,7 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
         console.success(f"Native tools поддерживаются: {model}")
         return True
     console.error(
-        f"Модель {model} печатает псевдовызовы вместо native tools. "
-        "Выберите другую модель для agent-режима."
+        f"Модель {model} печатает псевдовызовы вместо native tools. Выберите другую модель для agent-режима."
     )
     return False
 
@@ -346,7 +345,9 @@ def handle_slash(
         return client, False
     if command == "keys":
         statuses = credential_status()
-        summary = ", ".join(f"{name}: {'настроен' if ready else 'не настроен'}" for name, ready in statuses.items())
+        summary = ", ".join(
+            f"{name}: {'настроен' if ready else 'не настроен'}" for name, ready in statuses.items()
+        )
         console.activity(f"API-ключи: {summary}")
         provider = console.choose("Провайдер ключа", list(PROVIDER_API_KEYS))
         action = console.choose("Действие", ["Проверить", "Заменить", "Удалить", "Отмена"])
@@ -530,7 +531,9 @@ def run_agent(
     memory = AgentMemory(str(Path(project_root) / "logs" / "session.json"), username)
     memory.add("user", prompt)
     limits = AgentLimits(
-        max_steps=max_steps, max_tool_calls=max_tool_calls, max_seconds=max_seconds,
+        max_steps=max_steps,
+        max_tool_calls=max_tool_calls,
+        max_seconds=max_seconds,
         max_estimated_tokens=max_estimated_tokens,
     )
     guard = AgentLoopGuard(limits)
@@ -572,7 +575,8 @@ def run_agent(
                 console.agent_summary(guard.records, project_root)
                 return
             changed_paths = [
-                record.detail for record in guard.records
+                record.detail
+                for record in guard.records
                 if record.name in {"create_file", "edit_file", "move_file", "copy_file", "format_code"}
                 and record.status is ToolStatus.SUCCESS
             ]
@@ -597,9 +601,7 @@ def run_agent(
                 guard.record_invalid_call(name)
             else:
                 console.tool(name, arguments)
-                call = normalize_tool_call(
-                    {**tool_call, "function": {**function, "arguments": arguments}}
-                )
+                call = normalize_tool_call({**tool_call, "function": {**function, "arguments": arguments}})
                 guard_error = guard.inspect(call)
                 if read_only and name in {
                     "create_file",
@@ -639,9 +641,7 @@ def run_agent(
                 return
             if result.get("code") == "UNKNOWN_TOOL":
                 console.agent_summary(guard.records, project_root)
-                console.error(
-                    f"Модель запросила неизвестный инструмент: {name}. Агент остановлен."
-                )
+                console.error(f"Модель запросила неизвестный инструмент: {name}. Агент остановлен.")
                 return
             if result.get("code") == "PATH_OUTSIDE_PROJECT":
                 console.agent_summary(guard.records, project_root)
@@ -652,9 +652,7 @@ def run_agent(
                 return
         if guard.error_limit_reached:
             console.agent_summary(guard.records, project_root)
-            console.error(
-                f"Агент остановлен после {guard.consecutive_errors} последовательных ошибок."
-            )
+            console.error(f"Агент остановлен после {guard.consecutive_errors} последовательных ошибок.")
             return
         memory.trim(50)
 
@@ -665,9 +663,7 @@ def run_agent(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
     parser.add_argument("--project", "-p", default=None, help="Корень проекта")
-    parser.add_argument(
-        "--provider", choices=["nvidia", "gemini", "ollama"], default=None
-    )
+    parser.add_argument("--provider", choices=["nvidia", "gemini", "ollama"], default=None)
     parser.add_argument("--model", "-m", help="Одна модель для чата и кода")
     parser.add_argument("--agent", "-a", action="store_true", help="Разрешить агентные инструменты")
     parser.add_argument("--oneshot", "-o", metavar="PROMPT", help="Выполнить один запрос и выйти")

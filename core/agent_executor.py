@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import shutil
 import subprocess
-import difflib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Any
 
+from core.ignore import is_ignored_path
 from core.security import (
     ApprovalCallback,
     _setup_logger,
@@ -18,8 +19,6 @@ from core.security import (
     ensure_path_safe,
     parse_command,
 )
-from core.ignore import is_ignored_path
-from core.undo import backup_file
 from core.tools import (
     BUILTIN_TOOL_DEFINITIONS,
     PermissionMode,
@@ -30,6 +29,7 @@ from core.tools import (
     ToolResult,
     ToolStatus,
 )
+from core.undo import backup_file
 
 MAX_READ_BYTES = 50 * 1024
 MAX_OUTPUT_CHARS = 20_000
@@ -45,10 +45,20 @@ def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str,
         after = str(args.get("content", ""))
     else:
         lines = before.splitlines(keepends=True)
-        for patch in sorted(args.get("patches") or [], key=lambda item: int(item["start_line"]), reverse=True):
+        for patch in sorted(
+            args.get("patches") or [], key=lambda item: int(item["start_line"]), reverse=True
+        ):
             lines[int(patch["start_line"]) - 1 : int(patch["end_line"]) - 1] = [str(patch["new_content"])]
         after = "".join(lines)
-    diff = list(difflib.unified_diff(before.splitlines(), after.splitlines(), fromfile=str(args["path"]), tofile=str(args["path"]), lineterm=""))
+    diff = list(
+        difflib.unified_diff(
+            before.splitlines(),
+            after.splitlines(),
+            fromfile=str(args["path"]),
+            tofile=str(args["path"]),
+            lineterm="",
+        )
+    )
     visible = diff[:limit]
     if len(diff) > limit:
         visible.append(f"... {len(diff) - limit} more lines")
@@ -185,7 +195,11 @@ def list_directory(
     if not path.is_dir():
         raise NotADirectoryError(str(path))
     entries: list[dict[str, str | bool]] = sorted(
-        ({"name": item.name, "is_dir": item.is_dir()} for item in path.iterdir() if not is_ignored_path(item, project_root)),
+        (
+            {"name": item.name, "is_dir": item.is_dir()}
+            for item in path.iterdir()
+            if not is_ignored_path(item, project_root)
+        ),
         key=lambda item: (not item["is_dir"], str(item["name"]).lower()),
     )
     return {"status": "listed", "path": str(path), "entries": entries}
@@ -219,7 +233,13 @@ def search_in_files(
     skip = {".git", ".venv", "venv", "node_modules", "logs", "__pycache__"}
     extensions = {".py", ".js", ".ts", ".json", ".md", ".toml", ".yaml", ".yml", ".sh", ".ps1", ".bat"}
     for current, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if name not in skip and not name.startswith(".") and not is_ignored_path(Path(current) / name, project_root)]
+        dirs[:] = [
+            name
+            for name in dirs
+            if name not in skip
+            and not name.startswith(".")
+            and not is_ignored_path(Path(current) / name, project_root)
+        ]
         for name in files:
             path = Path(current) / name
             if is_ignored_path(path, project_root):
@@ -273,7 +293,11 @@ def copy_file(args: dict[str, Any], project_root: str) -> dict[str, Any]:
 
 def file_exists(args: dict[str, Any], project_root: str) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]))
-    return {"status": "checked", "path": str(path), "exists": path.exists() and not is_ignored_path(path, project_root)}
+    return {
+        "status": "checked",
+        "path": str(path),
+        "exists": path.exists() and not is_ignored_path(path, project_root),
+    }
 
 
 def get_file_info(args: dict[str, Any], project_root: str) -> dict[str, Any]:
@@ -282,19 +306,27 @@ def get_file_info(args: dict[str, Any], project_root: str) -> dict[str, Any]:
         raise PermissionError(f"Path is excluded by .citadexignore: {args['path']}")
     stat = path.stat()
     return {
-        "status": "inspected", "path": str(path), "is_file": path.is_file(),
-        "is_dir": path.is_dir(), "size": stat.st_size, "modified_ns": stat.st_mtime_ns,
+        "status": "inspected",
+        "path": str(path),
+        "is_file": path.is_file(),
+        "is_dir": path.is_dir(),
+        "size": stat.st_size,
+        "modified_ns": stat.st_mtime_ns,
     }
 
 
 def _run_git(arguments: list[str], project_root: str) -> dict[str, Any]:
     result = subprocess.run(
-        ["git", *arguments], cwd=Path(project_root).resolve(), capture_output=True,
-        text=True, timeout=15,
+        ["git", *arguments],
+        cwd=Path(project_root).resolve(),
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     return {
         "status": "completed" if result.returncode == 0 else "failed",
-        "stdout": result.stdout[-MAX_OUTPUT_CHARS:], "stderr": result.stderr[-MAX_OUTPUT_CHARS:],
+        "stdout": result.stdout[-MAX_OUTPUT_CHARS:],
+        "stderr": result.stderr[-MAX_OUTPUT_CHARS:],
         "returncode": result.returncode,
     }
 
@@ -378,6 +410,7 @@ def create_tool_registry(
     auto_approve: bool = False,
 ) -> ToolRegistry:
     """Build the runtime registry with handlers bound to one project."""
+
     def request_approval(request: PermissionRequest) -> bool:
         detail = preview_file_change(request.tool_name, request.arguments, project_root)
         return approve(request.action, detail) if approve is not None else False

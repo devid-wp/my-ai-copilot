@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,8 +43,16 @@ def detect_project_environment(project_root: str) -> ProjectEnvironment:
     run_commands: list[str] = []
     test_commands: list[str] = []
     important = (
-        "pyproject.toml", "requirements.txt", "setup.py", "package.json", "tsconfig.json",
-        "Cargo.toml", "go.mod", "pom.xml", "Dockerfile", "Makefile",
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "package.json",
+        "tsconfig.json",
+        "Cargo.toml",
+        "go.mod",
+        "pom.xml",
+        "Dockerfile",
+        "Makefile",
     )
     configs = tuple(name for name in important if (root / name).is_file())
 
@@ -69,7 +78,12 @@ def detect_project_environment(project_root: str) -> ProjectEnvironment:
         except (OSError, json.JSONDecodeError):
             package = {}
         dependencies = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
-        for name, framework in (("next", "Next.js"), ("react", "React"), ("vue", "Vue"), ("@angular/core", "Angular")):
+        for name, framework in (
+            ("next", "Next.js"),
+            ("react", "React"),
+            ("vue", "Vue"),
+            ("@angular/core", "Angular"),
+        ):
             if name in dependencies:
                 frameworks.add(framework)
         scripts = package.get("scripts", {})
@@ -81,15 +95,22 @@ def detect_project_environment(project_root: str) -> ProjectEnvironment:
             languages.add(language)
     try:
         result = subprocess.run(
-            ["git", "status", "--short", "--branch"], cwd=root, capture_output=True,
-            text=True, timeout=5,
+            ["git", "status", "--short", "--branch"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         git_status = result.stdout.strip() or "clean" if result.returncode == 0 else "not a repository"
     except (OSError, subprocess.SubprocessError):
         git_status = "unavailable"
     return ProjectEnvironment(
-        tuple(sorted(languages)), tuple(sorted(frameworks)), tuple(run_commands),
-        tuple(test_commands), git_status, configs,
+        tuple(sorted(languages)),
+        tuple(sorted(frameworks)),
+        tuple(run_commands),
+        tuple(test_commands),
+        git_status,
+        configs,
     )
 
 

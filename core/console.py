@@ -201,7 +201,9 @@ class Console:
         table.add_row("working directory", diagnostics.project_root)
         table.add_row("messages", str(diagnostics.message_count))
         table.add_row("tool calling", diagnostics.tools_state)
-        table.add_row("ollama", Text(diagnostics.ollama_state, style=self._state_color(diagnostics.ollama_state)))
+        table.add_row(
+            "ollama", Text(diagnostics.ollama_state, style=self._state_color(diagnostics.ollama_state))
+        )
         table.add_row("client", diagnostics.client_state)
         self.output.print(Panel(table, title="[bold]Session[/bold]", border_style=MUTED, box=box.ROUNDED))
 
@@ -265,7 +267,11 @@ class Console:
             table.add_row(Text("…", style=MUTED), f"{len(records) - 12} earlier action(s)", "")
         self.output.print(Panel(table, title="[bold]Готово[/bold]", border_style=GREEN, box=box.ROUNDED))
         changed = next(
-            (record.detail for record in reversed(records) if record.name in {"create_file", "edit_file"} and record.detail),
+            (
+                record.detail
+                for record in reversed(records)
+                if record.name in {"create_file", "edit_file"} and record.detail
+            ),
             "",
         )
         if changed:

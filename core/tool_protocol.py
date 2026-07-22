@@ -7,7 +7,9 @@ from typing import Any
 
 from core.tools import BUILTIN_TOOL_DEFINITIONS, ToolCall
 
-TOOL_SCHEMAS: list[dict[str, Any]] = [definition.to_openai_schema() for definition in BUILTIN_TOOL_DEFINITIONS]
+TOOL_SCHEMAS: list[dict[str, Any]] = [
+    definition.to_openai_schema() for definition in BUILTIN_TOOL_DEFINITIONS
+]
 
 
 def normalize_tool_call(raw: dict[str, Any], fallback_id: str = "call_0") -> ToolCall:

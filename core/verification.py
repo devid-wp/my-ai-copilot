@@ -32,7 +32,10 @@ def verify_agent_changes(paths: list[str], project_root: str) -> dict[str, Any]:
             checked.append(str(path))
 
     test_result: dict[str, Any] | None = None
-    has_tests = any((root / marker).is_file() for marker in ("pyproject.toml", "pytest.ini", "package.json", "Cargo.toml", "go.mod"))
+    has_tests = any(
+        (root / marker).is_file()
+        for marker in ("pyproject.toml", "pytest.ini", "package.json", "Cargo.toml", "go.mod")
+    )
     if checked and has_tests and not errors:
         try:
             test_result = run_tests({}, project_root)
