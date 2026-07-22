@@ -19,6 +19,7 @@ from core.security import (
     parse_command,
 )
 from core.ignore import is_ignored_path
+from core.undo import backup_file
 from core.tools import (
     BUILTIN_TOOL_DEFINITIONS,
     PermissionMode,
@@ -68,6 +69,7 @@ def create_file(
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]), mutation=True)
     exists = path.exists()
+    backup_file(path, project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = str(args.get("content", ""))
     temporary = path.with_name(f".{path.name}.citadex.tmp")
@@ -107,6 +109,7 @@ def edit_file(
             raise ValueError("Overlapping patches are not allowed.")
     for start, end, replacement in ordered:
         lines[start - 1 : end - 1] = [replacement]
+    backup_file(path, project_root)
     temporary = path.with_name(f".{path.name}.citadex.tmp")
     temporary.write_text("".join(lines), encoding="utf-8", newline="\n")
     temporary.replace(path)
@@ -121,6 +124,8 @@ def delete_file(
     path = _target(project_root, str(args["path"]), mutation=True)
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {args['path']}")
+    if path.is_file():
+        backup_file(path, project_root)
     action = "delete directory" if path.is_dir() else "delete file"
     if path.is_dir():
         shutil.rmtree(path)

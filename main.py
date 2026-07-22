@@ -31,6 +31,7 @@ from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.router import is_read_only_intent, should_use_agent
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
+from core.undo import undo_last_action
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -360,6 +361,14 @@ def handle_slash(
                 console.error(f"Проверка ключа не пройдена: {exc}")
             else:
                 console.success(f"Ключ {provider.upper()} работает")
+        return client, False
+    if command == "undo":
+        try:
+            result = undo_last_action(settings.project_root)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            console.error(str(exc))
+        else:
+            console.success(f"Последнее изменение отменено: {result['path']}")
         return client, False
     if command == "clear":
         session.clear()
