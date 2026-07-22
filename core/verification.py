@@ -10,6 +10,24 @@ from typing import Any
 from core.agent_executor import run_tests
 
 
+def relevant_test_scope(paths: list[str], project_root: str) -> str | None:
+    root = Path(project_root).resolve()
+    for raw_path in paths:
+        path = Path(raw_path)
+        path = path if path.is_absolute() else root / path
+        try:
+            relative = path.resolve().relative_to(root)
+        except ValueError:
+            continue
+        if relative.parts and relative.parts[0] == "tests" and path.suffix == ".py":
+            return relative.as_posix()
+        if path.suffix == ".py":
+            candidate = root / "tests" / f"test_{path.stem}.py"
+            if candidate.is_file():
+                return candidate.relative_to(root).as_posix()
+    return None
+
+
 def verify_agent_changes(paths: list[str], project_root: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
     checked: list[str] = []
@@ -38,7 +56,8 @@ def verify_agent_changes(paths: list[str], project_root: str) -> dict[str, Any]:
     )
     if checked and has_tests and not errors:
         try:
-            test_result = run_tests({}, project_root)
+            scope = relevant_test_scope(checked, project_root)
+            test_result = run_tests({"path": scope} if scope else {}, project_root)
         except (OSError, RuntimeError) as exc:
             errors.append(f"Tests could not run: {exc}")
         else:
@@ -47,4 +66,4 @@ def verify_agent_changes(paths: list[str], project_root: str) -> dict[str, Any]:
     return {"ok": not errors, "files": checked, "errors": errors, "tests": test_result}
 
 
-__all__ = ["verify_agent_changes"]
+__all__ = ["relevant_test_scope", "verify_agent_changes"]
