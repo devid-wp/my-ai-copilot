@@ -7,9 +7,9 @@ from typing import Any
 
 import httpx
 
-from core.functions import FUNCTION_DEFINITIONS
+from core.tool_protocol import provider_tool_schemas
 
-TOOLS = [{"type": "function", "function": definition} for definition in FUNCTION_DEFINITIONS]
+TOOLS = provider_tool_schemas()
 
 
 class ToolCompatibility(str, Enum):

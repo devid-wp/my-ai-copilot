@@ -7,10 +7,10 @@ from typing import Any
 
 from openai import OpenAI
 
-from core.functions import FUNCTION_DEFINITIONS
+from core.tool_protocol import provider_tool_schemas
 from core.router import classify_prompt
 
-TOOLS = [{"type": "function", "function": definition} for definition in FUNCTION_DEFINITIONS]
+TOOLS = provider_tool_schemas()
 
 
 class NVIDIAClient:

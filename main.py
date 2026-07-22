@@ -31,6 +31,7 @@ from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.router import is_read_only_intent, should_use_agent
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
+from core.tool_protocol import normalize_tool_call
 from core.undo import undo_last_action
 
 PROVIDER_MODELS = {
@@ -570,10 +571,8 @@ def run_agent(
                 guard.record_invalid_call(name)
             else:
                 console.tool(name, arguments)
-                call = ToolCall(
-                    id=tool_call.get("id", "call_0"),
-                    name=name,
-                    arguments=arguments,
+                call = normalize_tool_call(
+                    {**tool_call, "function": {**function, "arguments": arguments}}
                 )
                 guard_error = guard.inspect(call)
                 if read_only and name in {

@@ -5,10 +5,8 @@ New code should consume ``BUILTIN_TOOL_DEFINITIONS`` or a ``ToolRegistry``.
 
 from typing import Any
 
-from core.tools import BUILTIN_TOOL_DEFINITIONS
+from core.tool_protocol import TOOL_SCHEMAS
 
-FUNCTION_DEFINITIONS: list[dict[str, Any]] = [
-    definition.to_openai_schema()["function"] for definition in BUILTIN_TOOL_DEFINITIONS
-]
+FUNCTION_DEFINITIONS: list[dict[str, Any]] = [schema["function"] for schema in TOOL_SCHEMAS]
 
 __all__ = ["FUNCTION_DEFINITIONS"]
