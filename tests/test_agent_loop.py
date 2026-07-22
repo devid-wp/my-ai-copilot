@@ -1,4 +1,4 @@
-from core.agent_loop import AgentLoopGuard, pseudo_tool_name
+from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 
 
@@ -57,3 +57,12 @@ def test_pseudo_tool_call_is_detected_but_regular_json_is_not():
     )
     assert pseudo_tool_name('{"status":"ok"}') is None
     assert pseudo_tool_name("Use create_file to continue") is None
+
+
+def test_guard_does_not_repeat_an_identical_failed_call():
+    guard = AgentLoopGuard(AgentLimits(max_repeated_calls=5))
+    tool_call = call()
+    assert guard.inspect(tool_call) is None
+    guard.record(tool_call, result(tool_call, ToolStatus.ERROR))
+    assert guard.inspect(tool_call).code == "RETRY_WITHOUT_CHANGE"
+    assert "повторён не будет" in recovery_advice("RETRY_WITHOUT_CHANGE", ".")

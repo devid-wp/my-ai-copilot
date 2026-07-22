@@ -23,6 +23,7 @@ class AgentLoopGuard:
     consecutive_errors: int = 0
     records: list[ToolRunRecord] = field(default_factory=list)
     _call_counts: dict[str, int] = field(default_factory=dict)
+    _failed_calls: set[str] = field(default_factory=set)
 
     def inspect(self, call: ToolCall) -> ToolError | None:
         """Count a call and reject it when a configured limit is exceeded."""
@@ -39,6 +40,11 @@ class AgentLoopGuard:
             sort_keys=True,
             separators=(",", ":"),
         )
+        if signature in self._failed_calls:
+            return ToolError(
+                code="RETRY_WITHOUT_CHANGE",
+                message="The same tool call already failed; change the arguments or approach.",
+            )
         count = self._call_counts.get(signature, 0) + 1
         self._call_counts[signature] = count
         if count > self.limits.max_repeated_calls:
@@ -63,6 +69,25 @@ class AgentLoopGuard:
             self.consecutive_errors = 0
         else:
             self.consecutive_errors += 1
+            self._failed_calls.add(
+                json.dumps(
+                    {"name": call.name, "arguments": call.arguments},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+
+
+def recovery_advice(code: str, project_root: str) -> str:
+    """Return a concrete next action without leaking tool internals."""
+    if code == "PATH_OUTSIDE_PROJECT":
+        return f"Выберите нужную рабочую папку через /project <path> (сейчас: {project_root})."
+    if code == "UNKNOWN_TOOL":
+        return "Выберите модель с поддержкой native tool calling."
+    if code in {"REPEATED_TOOL_CALL", "RETRY_WITHOUT_CHANGE"}:
+        return "Измените аргументы или способ выполнения; одинаковый вызов повторён не будет."
+    return "Проверьте входные данные инструмента и повторите запрос с исправленными параметрами."
 
     def record_invalid_call(self, name: str) -> None:
         self.records.append(ToolRunRecord(name=name or "unknown", status=ToolStatus.ERROR, detail=""))
@@ -99,4 +124,4 @@ def _call_detail(arguments: dict[str, Any]) -> str:
     return ""
 
 
-__all__ = ["AgentLoopGuard", "ToolRunRecord", "pseudo_tool_name"]
+__all__ = ["AgentLoopGuard", "ToolRunRecord", "pseudo_tool_name", "recovery_advice"]

@@ -14,7 +14,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from core.agent_executor import create_tool_registry, tool_result_payload
-from core.agent_loop import AgentLoopGuard, pseudo_tool_name
+from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context
 from core.credentials import PROVIDER_API_KEYS, load_credentials, save_api_key, validate_api_key
@@ -528,6 +528,8 @@ def run_agent(
                 name=name,
             )
             console.tool_result(result)
+            if result.get("status") == "error":
+                console.warning(recovery_advice(str(result.get("code", "")), project_root))
             if result.get("code") == "UNKNOWN_TOOL":
                 console.agent_summary(guard.records, project_root)
                 console.error(
