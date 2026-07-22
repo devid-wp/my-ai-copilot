@@ -616,11 +616,14 @@ def main(argv: list[str] | None = None) -> int:
     interactive_setup = not args.oneshot and not args.skip_setup
     if interactive_setup:
         try:
-            settings.project_root = choose_recent_project(console, preferences, settings.project_root)
-            project_root = settings.project_root
-            session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
-            if not run_startup_setup(settings, console, preferences):
-                return 2
+            configured = bool(preferences.project_root and preferences.models.get(settings.provider))
+            quick = configured and console.quick_start(session_diagnostics(settings, session, None))
+            if not quick:
+                settings.project_root = choose_recent_project(console, preferences, settings.project_root)
+                project_root = settings.project_root
+                session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
+                if not run_startup_setup(settings, console, preferences):
+                    return 2
         except (EOFError, KeyboardInterrupt):
             console.goodbye()
             return 0

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -105,6 +106,16 @@ class Console:
                 padding=(1, 1),
             )
         )
+
+    def quick_start(self, diagnostics: SessionDiagnostics) -> bool:
+        body = Text(
+            f"Project: {Path(diagnostics.project_root).name}\n"
+            f"Provider: {diagnostics.provider.upper()}\nModel: {diagnostics.model}\n"
+            f"Mode: {diagnostics.mode}\nPermissions: {diagnostics.permissions}\n\n"
+            "Enter — продолжить\nC — изменить настройки"
+        )
+        self.output.print(Panel(body, title="[bold]Citadex готов[/bold]", border_style=GREEN))
+        return self.input("Запуск").strip().casefold() != "c"
 
     def prompt(self) -> str:
         return self._read("citadex ❯ ", HTML("<brand>citadex</brand> <prompt>❯</prompt> "))
