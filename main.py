@@ -33,6 +33,7 @@ from core.router import is_read_only_intent, should_use_agent
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 from core.tool_protocol import normalize_tool_call
 from core.undo import undo_last_action
+from core.verification import verify_agent_changes
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -557,6 +558,18 @@ def run_agent(
                 )
                 console.agent_summary(guard.records, project_root)
                 return
+            changed_paths = [
+                record.detail for record in guard.records
+                if record.name in {"create_file", "edit_file", "move_file", "copy_file", "format_code"}
+                and record.status is ToolStatus.SUCCESS
+            ]
+            if changed_paths:
+                console.activity("Проверка изменённых файлов, синтаксиса и тестов")
+                verification = verify_agent_changes(changed_paths, project_root)
+                if not verification["ok"]:
+                    console.agent_summary(guard.records, project_root)
+                    console.error("Проверка не пройдена:\n" + "\n".join(verification["errors"]))
+                    return
             console.agent_summary(guard.records, project_root)
             console.success("Задача завершена")
             return

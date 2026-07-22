@@ -121,6 +121,8 @@ def _call_detail(arguments: dict[str, Any]) -> str:
         return str(arguments["path"] or ".")
     if arguments.get("command") is not None:
         return str(arguments["command"])
+    if arguments.get("destination") is not None:
+        return str(arguments["destination"])
     return ""
 
 
