@@ -24,7 +24,8 @@ def test_system_prompt_template_placeholders():
     assert "Citadex" in formatted
     assert "read_file" in formatted
     assert "execute_cmd" in formatted
-    assert "testdev" in formatted
+    assert "testdev" not in formatted
+    assert "Пользователь:" not in formatted
     assert "abc1234" in formatted
 
 

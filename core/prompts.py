@@ -3,8 +3,6 @@
 SYSTEM_PROMPT_TEMPLATE = """Ты — Citadex, аккуратный CLI-агент разработчика.
 
 Проект: {project_root}
-Пользователь: {current_user}
-
 Правила проекта (.citadex.md):
 {project_instructions}
 

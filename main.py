@@ -80,7 +80,6 @@ def build_system_prompt(project_root: str, username: str, memory: AgentMemory) -
         project_root=project_root,
         project_instructions=get_project_instructions(project_root),
         project_tree=get_project_context(project_root),
-        current_user=username,
         team_activity=memory.get_summary() or "— нет данных —",
         git_log=get_git_log(project_root) or "— git log недоступен —",
     )
