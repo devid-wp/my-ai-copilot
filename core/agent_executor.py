@@ -17,6 +17,7 @@ from core.security import (
     ensure_path_safe,
     parse_command,
 )
+from core.ignore import is_ignored_path
 from core.tools import (
     BUILTIN_TOOL_DEFINITIONS,
     PermissionMode,
@@ -158,7 +159,7 @@ def list_directory(
     if not path.is_dir():
         raise NotADirectoryError(str(path))
     entries: list[dict[str, str | bool]] = sorted(
-        ({"name": item.name, "is_dir": item.is_dir()} for item in path.iterdir()),
+        ({"name": item.name, "is_dir": item.is_dir()} for item in path.iterdir() if not is_ignored_path(item, project_root)),
         key=lambda item: (not item["is_dir"], str(item["name"]).lower()),
     )
     return {"status": "listed", "path": str(path), "entries": entries}
@@ -169,6 +170,8 @@ def read_file(
     project_root: str,
 ) -> dict[str, Any]:
     path = _target(project_root, str(args["path"]))
+    if is_ignored_path(path, project_root):
+        raise PermissionError(f"Path is excluded by .citadexignore: {args['path']}")
     if not path.is_file():
         raise FileNotFoundError(str(path))
     data = path.read_bytes()[:MAX_READ_BYTES]
@@ -190,9 +193,11 @@ def search_in_files(
     skip = {".git", ".venv", "venv", "node_modules", "logs", "__pycache__"}
     extensions = {".py", ".js", ".ts", ".json", ".md", ".toml", ".yaml", ".yml", ".sh", ".ps1", ".bat"}
     for current, dirs, files in os.walk(root):
-        dirs[:] = [name for name in dirs if name not in skip and not name.startswith(".")]
+        dirs[:] = [name for name in dirs if name not in skip and not name.startswith(".") and not is_ignored_path(Path(current) / name, project_root)]
         for name in files:
             path = Path(current) / name
+            if is_ignored_path(path, project_root):
+                continue
             if path.suffix.lower() not in extensions:
                 continue
             try:

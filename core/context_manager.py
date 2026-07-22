@@ -6,6 +6,8 @@
 
 import os
 
+from core.ignore import is_ignored_path, load_ignore_rules
+
 # Каталоги, которые пропускаем
 SKIP_DIRS = {
     ".git",
@@ -139,10 +141,15 @@ def get_project_context(project_root):
     tree_lines = []
     file_sections = []
     total_size = 0
+    ignore_rules = load_ignore_rules(project_root)
 
     for root, dirs, files in os.walk(project_root):
         # Фильтруем каталоги — пропускаем скрытые и ненужные
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in SKIP_DIRS and not d.startswith(".")
+            and not is_ignored_path(os.path.join(root, d), project_root, ignore_rules)
+        )
 
         rel_root = os.path.relpath(root, project_root)
         if rel_root == ".":
@@ -155,6 +162,8 @@ def get_project_context(project_root):
             tree_lines.append(f"{indent}{os.path.basename(root)}/")
 
         for fname in sorted(files):
+            if is_ignored_path(os.path.join(root, fname), project_root, ignore_rules):
+                continue
             if fname in SKIP_FILES:
                 continue
 
