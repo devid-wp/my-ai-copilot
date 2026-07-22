@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
@@ -24,9 +25,31 @@ class AgentLoopGuard:
     records: list[ToolRunRecord] = field(default_factory=list)
     _call_counts: dict[str, int] = field(default_factory=dict)
     _failed_calls: set[str] = field(default_factory=set)
+    estimated_tokens: int = 0
+    _started_at: float = field(default_factory=perf_counter)
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return perf_counter() - self._started_at
+
+    def count_text(self, text: str) -> None:
+        self.estimated_tokens += max(1, len(text) // 4)
+
+    def budget_error(self) -> ToolError | None:
+        if self.elapsed_seconds >= self.limits.max_seconds:
+            return ToolError(code="TIME_BUDGET", message=f"Time budget reached ({self.limits.max_seconds}s).")
+        if self.estimated_tokens >= self.limits.max_estimated_tokens:
+            return ToolError(
+                code="TOKEN_BUDGET",
+                message=f"Estimated token budget reached ({self.limits.max_estimated_tokens}).",
+            )
+        return None
 
     def inspect(self, call: ToolCall) -> ToolError | None:
         """Count a call and reject it when a configured limit is exceeded."""
+        exhausted = self.budget_error()
+        if exhausted is not None:
+            return exhausted
         if self.tool_call_count >= self.limits.max_tool_calls:
             return ToolError(
                 code="TOOL_CALL_LIMIT",

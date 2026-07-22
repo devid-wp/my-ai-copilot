@@ -132,6 +132,8 @@ class AgentLimits:
     max_consecutive_errors: int = 3
     max_output_chars: int = 20_000
     command_timeout_seconds: int = 30
+    max_seconds: int = 300
+    max_estimated_tokens: int = 32_000
 
     def __post_init__(self) -> None:
         for name in (
@@ -141,6 +143,8 @@ class AgentLimits:
             "max_consecutive_errors",
             "max_output_chars",
             "command_timeout_seconds",
+            "max_seconds",
+            "max_estimated_tokens",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be greater than zero.")

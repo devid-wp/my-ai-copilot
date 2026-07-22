@@ -523,11 +523,18 @@ def run_agent(
     console: Console,
     auto_approve: bool = False,
     max_steps: int = 30,
+    max_tool_calls: int = 100,
+    max_seconds: int = 300,
+    max_estimated_tokens: int = 32_000,
 ) -> None:
     memory = AgentMemory(str(Path(project_root) / "logs" / "session.json"), username)
     memory.add("user", prompt)
-    limits = AgentLimits(max_steps=max_steps)
+    limits = AgentLimits(
+        max_steps=max_steps, max_tool_calls=max_tool_calls, max_seconds=max_seconds,
+        max_estimated_tokens=max_estimated_tokens,
+    )
     guard = AgentLoopGuard(limits)
+    guard.count_text(prompt)
     console.execution_plan(execution_plan(prompt))
     read_only = is_read_only_intent(prompt)
 
@@ -537,6 +544,10 @@ def run_agent(
     tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
 
     for step in range(1, limits.max_steps + 1):
+        exhausted = guard.budget_error()
+        if exhausted is not None:
+            console.error(exhausted.message)
+            return
         client.system_prompt = build_system_prompt(project_root, username, memory)
         if memory.history and memory.history[0].get("role") == "system":
             memory.history[0]["content"] = client.system_prompt
@@ -546,6 +557,8 @@ def run_agent(
 
         console.step(step, limits.max_steps, client.select_model(prompt))
         response = console.stream(client.ask_stream("", messages=memory.get_history()))
+        guard.count_text(response)
+        console.agent_budget(step, guard)
         tool_calls = client.get_last_tool_calls()
         memory.add("assistant", response, tool_calls=tool_calls or None)
 
@@ -620,6 +633,10 @@ def run_agent(
             console.tool_result(result)
             if result.get("status") == "error":
                 console.warning(recovery_advice(str(result.get("code", "")), project_root))
+            if result.get("code") in {"TIME_BUDGET", "TOKEN_BUDGET", "TOOL_CALL_LIMIT"}:
+                console.agent_budget(step, guard)
+                console.error(str(result.get("error")))
+                return
             if result.get("code") == "UNKNOWN_TOOL":
                 console.agent_summary(guard.records, project_root)
                 console.error(
@@ -659,6 +676,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--user", "-u", default=os.getenv("USER", os.getenv("USERNAME", "dev")))
     parser.add_argument("--max-steps", type=int, default=30)
+    parser.add_argument("--max-tool-calls", type=int, default=100)
+    parser.add_argument("--max-seconds", type=int, default=300)
+    parser.add_argument("--max-tokens", type=int, default=32_000, dest="max_estimated_tokens")
     parser.add_argument(
         "--skip-setup",
         action="store_true",
@@ -735,6 +755,9 @@ def main(argv: list[str] | None = None) -> int:
                     console,
                     settings.auto_approve,
                     args.max_steps,
+                    args.max_tool_calls,
+                    args.max_seconds,
+                    args.max_estimated_tokens,
                 )
             else:
                 run_chat(client, args.oneshot, console)
@@ -777,6 +800,9 @@ def main(argv: list[str] | None = None) -> int:
                     console,
                     settings.auto_approve,
                     args.max_steps,
+                    args.max_tool_calls,
+                    args.max_seconds,
+                    args.max_estimated_tokens,
                 )
             else:
                 run_chat(client, prompt, console)

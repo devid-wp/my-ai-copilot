@@ -66,3 +66,10 @@ def test_guard_does_not_repeat_an_identical_failed_call():
     guard.record(tool_call, result(tool_call, ToolStatus.ERROR))
     assert guard.inspect(tool_call).code == "RETRY_WITHOUT_CHANGE"
     assert "повторён не будет" in recovery_advice("RETRY_WITHOUT_CHANGE", ".")
+
+
+def test_guard_tracks_and_limits_estimated_tokens():
+    guard = AgentLoopGuard(AgentLimits(max_estimated_tokens=2))
+    guard.count_text("12345678")
+    assert guard.estimated_tokens == 2
+    assert guard.budget_error().code == "TOKEN_BUDGET"
