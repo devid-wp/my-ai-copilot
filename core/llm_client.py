@@ -8,6 +8,7 @@ from typing import Any
 from openai import OpenAI
 
 from core.router import classify_prompt
+from core.runtime_config import response_temperature, response_token_limit
 from core.tool_protocol import provider_tool_schemas
 
 TOOLS = provider_tool_schemas()
@@ -58,8 +59,8 @@ class NVIDIAClient:
         request: dict[str, Any] = {
             "model": self.select_model(routing_prompt),
             "messages": self._clean_messages(messages),
-            "temperature": 0.4,
-            "max_tokens": 4096,
+            "temperature": response_temperature(),
+            "max_tokens": response_token_limit(),
             "stream": True,
         }
         if external_messages:

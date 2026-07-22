@@ -55,7 +55,8 @@ class OllamaClient:
         return probe_tool_support(self.base_url, model)
 
     def select_model(self, prompt: str) -> str:
-        from core.router import classify_prompt
+from core.router import classify_prompt
+from core.runtime_config import response_temperature, response_token_limit
 
         return self.model_code if classify_prompt(prompt) == "code" else self.model_chat
 
@@ -86,7 +87,10 @@ class OllamaClient:
             "model": selected,
             "messages": ollama_messages,
             "stream": True,
-            "options": {"temperature": 0.5, "num_predict": 4096},
+            "options": {
+                "temperature": response_temperature(),
+                "num_predict": response_token_limit(),
+            },
         }
         if external_messages:
             payload["tools"] = TOOLS

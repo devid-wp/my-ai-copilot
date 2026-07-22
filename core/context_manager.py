@@ -33,50 +33,6 @@ SKIP_DIRS = {
     "~",
 }
 
-# Расширения файлов, которые читаем
-CODE_EXTENSIONS = {
-    ".py",
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".mjs",
-    ".cjs",
-    ".html",
-    ".css",
-    ".scss",
-    ".less",
-    ".json",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".cfg",
-    ".ini",
-    ".md",
-    ".txt",
-    ".rst",
-    ".sh",
-    ".bat",
-    ".ps1",
-    ".cmd",
-    ".sql",
-    ".graphql",
-    ".xml",
-    ".svg",
-    ".c",
-    ".cpp",
-    ".h",
-    ".hpp",
-    ".cs",
-    ".java",
-    ".go",
-    ".rs",
-    ".rb",
-    ".php",
-    ".lua",
-    ".r",
-}
-
 # Файлы по имени (без расширения или особые имена)
 KNOWN_FILES = {
     "Dockerfile",
@@ -94,6 +50,12 @@ KNOWN_FILES = {
     "pyproject.toml",
     "package.json",
     "tsconfig.json",
+    "README.md",
+    "main.py",
+    "app.py",
+    "index.js",
+    "index.ts",
+    "index.html",
 }
 
 # Файлы, которые всегда пропускаем
@@ -114,8 +76,8 @@ SKIP_FILES = {
     "Thumbs.db",
 }
 
-MAX_FILE_SIZE = 15_000  # 15 KB на файл
-MAX_TOTAL_SIZE = 80_000  # 80 KB общий лимит контекста
+MAX_FILE_SIZE = 12_000
+MAX_TOTAL_SIZE = 32_000
 MAX_INSTRUCTIONS_SIZE = 12_000
 
 
@@ -130,13 +92,8 @@ def get_project_instructions(project_root: str) -> str:
 
 
 def _should_read(fname):
-    """Проверяет, нужно ли читать файл."""
-    if fname in SKIP_FILES:
-        return False
-    if fname in KNOWN_FILES:
-        return True
-    _, ext = os.path.splitext(fname)
-    return ext.lower() in CODE_EXTENSIONS
+    """Read only high-signal entry points; tools load other files on demand."""
+    return fname not in SKIP_FILES and fname in KNOWN_FILES
 
 
 def get_project_context(project_root):
@@ -157,8 +114,10 @@ def get_project_context(project_root):
     for root, dirs, files in os.walk(project_root):
         # Фильтруем каталоги — пропускаем скрытые и ненужные
         dirs[:] = sorted(
-            d for d in dirs
-            if d not in SKIP_DIRS and not d.startswith(".")
+            d
+            for d in dirs
+            if d not in SKIP_DIRS
+            and not d.startswith(".")
             and not is_ignored_path(os.path.join(root, d), project_root, ignore_rules)
         )
 
