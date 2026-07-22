@@ -253,9 +253,10 @@ def run_startup_setup(
 
 def choose_recent_project(console: Console, preferences: UserPreferences, current: str) -> str:
     """Offer existing recent directories and fall back to a typed path."""
-    recent = [path for path in preferences.recent_projects if Path(path).is_dir()]
-    if current not in recent:
-        recent.insert(0, current)
+    recent = [
+        current,
+        *(path for path in preferences.recent_projects if path != current and Path(path).is_dir()),
+    ]
     labels = [f"{Path(path).name} — {path}" for path in recent[:3]]
     other = "Выбрать другую папку"
     selected = console.choose("Рабочая папка", [*labels, other], default=labels[0])
@@ -705,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     console = Console()
     preferences = load_preferences()
-    project_root = str(Path(args.project or preferences.project_root or os.getcwd()).resolve())
+    project_root = str(Path(args.project or os.getcwd()).resolve())
     if not Path(project_root).is_dir():
         console.error(f"Папка проекта не найдена: {project_root}")
         return 2
@@ -727,8 +728,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             key_name = PROVIDER_API_KEYS.get(settings.provider)
             configured = bool(
-                preferences.project_root
-                and preferences.models.get(settings.provider)
+                preferences.models.get(settings.provider)
                 and (key_name is None or os.getenv(key_name))
             )
             quick = configured and console.quick_start(session_diagnostics(settings, session, None))
