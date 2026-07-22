@@ -105,7 +105,7 @@ def test_agent_summary_lists_actions(monkeypatch):
     console.agent_summary([ToolRunRecord("create_file", ToolStatus.SUCCESS, "page.html")])
 
     rendered = stream.getvalue()
-    assert "Готово" in rendered
+    assert "Agent summary" in rendered
     assert "create_file" in rendered
     assert "page.html" in rendered
 

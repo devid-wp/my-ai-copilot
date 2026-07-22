@@ -40,6 +40,14 @@ TOOL_ACTIONS = {
     "list_directory": "LIST",
     "read_file": "READ",
     "search_in_files": "SEARCH",
+    "move_file": "MOVE",
+    "copy_file": "COPY",
+    "file_exists": "EXISTS",
+    "get_file_info": "INFO",
+    "git_status": "GIT",
+    "git_diff": "DIFF",
+    "run_tests": "TEST",
+    "format_code": "FORMAT",
 }
 
 SLASH_COMMANDS = [
@@ -110,13 +118,34 @@ class Console:
         )
 
     def quick_start(self, diagnostics: SessionDiagnostics) -> bool:
-        body = Text(
-            f"Project: {Path(diagnostics.project_root).name}\n"
-            f"Provider: {diagnostics.provider.upper()}\nModel: {diagnostics.model}\n"
-            f"Mode: {diagnostics.mode}\nPermissions: {diagnostics.permissions}\n\n"
-            "Enter — продолжить\nC — изменить настройки"
+        details = Table.grid(expand=True, padding=(0, 1))
+        details.add_column(style=MUTED, width=13)
+        details.add_column(style="bold white")
+        details.add_row("PROJECT", Path(diagnostics.project_root).name)
+        details.add_row("PROVIDER", diagnostics.provider.upper())
+        details.add_row("MODEL", diagnostics.model)
+        details.add_row(
+            "MODE",
+            Text(diagnostics.mode.upper(), style=PURPLE if diagnostics.mode == "agent" else CYAN),
         )
-        self.output.print(Panel(body, title="[bold]Citadex готов[/bold]", border_style=GREEN))
+        details.add_row("PERMISSIONS", diagnostics.permissions)
+        details.add_row("", "")
+        details.add_row("ENTER", "продолжить")
+        details.add_row("C", "изменить настройки")
+        title = Text.assemble(
+            (" CITADEX ", "bold white on #7c3aed"),
+            (" ready ", MUTED),
+        )
+        self.output.print(
+            Panel(
+                details,
+                title=title,
+                title_align="left",
+                border_style=PURPLE_DARK,
+                box=box.ROUNDED,
+                padding=(1, 1),
+            )
+        )
         return self.input("Запуск").strip().casefold() != "c"
 
     def prompt(self) -> str:
@@ -188,6 +217,10 @@ class Console:
             ),
         )
         table.add_row(
+            "tools",
+            Text(diagnostics.tools_state, style=self._state_color(diagnostics.tools_state)),
+        )
+        table.add_row(
             "mode",
             Text(diagnostics.mode, style=PURPLE if diagnostics.mode == "agent" else CYAN),
         )
@@ -198,9 +231,8 @@ class Console:
                 style=YELLOW if diagnostics.permissions == "auto" else GREEN,
             ),
         )
-        table.add_row("working directory", diagnostics.project_root)
+        table.add_row("project", diagnostics.project_root)
         table.add_row("messages", str(diagnostics.message_count))
-        table.add_row("tool calling", diagnostics.tools_state)
         table.add_row(
             "ollama", Text(diagnostics.ollama_state, style=self._state_color(diagnostics.ollama_state))
         )
@@ -265,7 +297,9 @@ class Console:
             table.add_row(symbol, record.name, self._shorten(record.detail))
         if len(records) > 12:
             table.add_row(Text("…", style=MUTED), f"{len(records) - 12} earlier action(s)", "")
-        self.output.print(Panel(table, title="[bold]Готово[/bold]", border_style=GREEN, box=box.ROUNDED))
+        self.output.print(
+            Panel(table, title="[bold]Agent summary[/bold]", border_style=MUTED, box=box.ROUNDED)
+        )
         changed = next(
             (
                 record.detail
