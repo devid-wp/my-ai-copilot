@@ -28,6 +28,7 @@ from core.credentials import (
 from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
+from core.provider_catalog import nvidia_models, select_nvidia_model
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.router import is_read_only_intent, should_use_agent
 from core.tool_protocol import normalize_tool_call
@@ -91,6 +92,8 @@ def env(name: str, default: str) -> str:
 
 def provider_models(provider: str) -> list[str]:
     """Return configured cloud models or models installed in local Ollama."""
+    if provider == "nvidia":
+        return nvidia_models(os.getenv("NVIDIA_API_KEY", ""))
     if provider != "ollama":
         return PROVIDER_MODELS[provider]
 
@@ -473,11 +476,12 @@ def create_client(provider: str, model: str | None, system_prompt: str):
         key = os.getenv("NVIDIA_API_KEY", "")
         if not key:
             raise ValueError("NVIDIA_API_KEY не задан. Добавьте его в .env или окружение.")
+        selected_model = model or select_nvidia_model(key)
         return NVIDIAClient(
             key,
             system_prompt,
-            model_chat=model or env("NVIDIA_MODEL_CHAT", "meta/llama-3.1-8b-instruct"),
-            model_code=model or env("NVIDIA_MODEL_CODE", "meta/llama-3.3-70b-instruct"),
+            model_chat=selected_model,
+            model_code=selected_model,
         )
     if provider == "gemini":
         from core.gemini_client import GeminiClient

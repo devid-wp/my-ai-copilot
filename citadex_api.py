@@ -10,11 +10,11 @@ from typing import Any
 
 from core.credentials import PROVIDER_API_KEYS, save_api_key, validate_api_key
 from core.preferences import UserPreferences, save_preferences
+from core.provider_catalog import select_nvidia_model
 from core.tool_smoke import check_native_tool_calling
 from main import main as citadex_main
 
 API_MODELS = {
-    "nvidia": "meta/llama-3.3-70b-instruct",
     "gemini": "gemini-2.5-pro",
 }
 
@@ -42,7 +42,7 @@ def create_api_client(provider: str, api_key: str, model: str) -> Any:
 
 def configure_api(provider: str, api_key: str) -> str:
     key = validate_api_key(provider, api_key)
-    model = API_MODELS[provider]
+    model = select_nvidia_model(key) if provider == "nvidia" else API_MODELS[provider]
     client = create_api_client(provider, key, model)
     check_native_tool_calling(client)
     save_api_key(provider, key)
