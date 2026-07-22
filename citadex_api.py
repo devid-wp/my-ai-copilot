@@ -65,7 +65,11 @@ def run() -> int:
     provider = choose_provider()
     environment_name = PROVIDER_API_KEYS[provider]
     existing = os.getenv(environment_name, "").strip()
-    api_key = existing or getpass(f"Вставьте {provider.upper()} API-ключ (он будет скрыт): ").strip()
+    label = f"Вставьте {provider.upper()} API-ключ (он будет скрыт)"
+    if existing:
+        label += " или нажмите Enter, чтобы проверить сохранённый"
+    entered = getpass(f"{label}: ").strip()
+    api_key = entered or existing
     if not api_key:
         print("\nОшибка: API-ключ не введён.", file=sys.stderr)
         return 2
