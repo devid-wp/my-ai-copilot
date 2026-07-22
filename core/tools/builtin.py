@@ -140,4 +140,47 @@ BUILTIN_TOOL_DEFINITIONS = (
     ),
 )
 
+BUILTIN_TOOL_DEFINITIONS += tuple(
+    ToolDefinition(
+        name=name,
+        description=description,
+        input_schema={
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        },
+        risk=risk,
+    )
+    for name, description, properties, required, risk in (
+        (
+            "move_file",
+            "Move a file to another path inside the project.",
+            {"source": {"type": "string"}, "destination": {"type": "string"}},
+            ["source", "destination"],
+            ToolRisk.PROJECT_WRITE,
+        ),
+        (
+            "copy_file",
+            "Copy a file to another path inside the project.",
+            {"source": {"type": "string"}, "destination": {"type": "string"}},
+            ["source", "destination"],
+            ToolRisk.PROJECT_WRITE,
+        ),
+        (
+            "file_exists",
+            "Check whether a path exists inside the project.",
+            {"path": {"type": "string"}},
+            ["path"],
+            ToolRisk.READ_ONLY,
+        ),
+        (
+            "get_file_info",
+            "Return safe metadata for a file or directory.",
+            {"path": {"type": "string"}},
+            ["path"],
+            ToolRisk.READ_ONLY,
+        ),
+    )
+)
+
 __all__ = ["BUILTIN_TOOL_DEFINITIONS"]

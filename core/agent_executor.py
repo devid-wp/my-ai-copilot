@@ -249,6 +249,44 @@ def search_in_files(
     }
 
 
+def move_file(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    source = _target(project_root, str(args["source"]), mutation=True)
+    destination = _target(project_root, str(args["destination"]), mutation=True)
+    if not source.is_file():
+        raise FileNotFoundError(str(source))
+    backup_file(destination, project_root)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source.replace(destination)
+    return {"status": "moved", "source": str(source), "path": str(destination)}
+
+
+def copy_file(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    source = _target(project_root, str(args["source"]))
+    destination = _target(project_root, str(args["destination"]), mutation=True)
+    if not source.is_file():
+        raise FileNotFoundError(str(source))
+    backup_file(destination, project_root)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return {"status": "copied", "source": str(source), "path": str(destination)}
+
+
+def file_exists(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]))
+    return {"status": "checked", "path": str(path), "exists": path.exists() and not is_ignored_path(path, project_root)}
+
+
+def get_file_info(args: dict[str, Any], project_root: str) -> dict[str, Any]:
+    path = _target(project_root, str(args["path"]))
+    if is_ignored_path(path, project_root):
+        raise PermissionError(f"Path is excluded by .citadexignore: {args['path']}")
+    stat = path.stat()
+    return {
+        "status": "inspected", "path": str(path), "is_file": path.is_file(),
+        "is_dir": path.is_dir(), "size": stat.st_size, "modified_ns": stat.st_mtime_ns,
+    }
+
+
 FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "create_file": create_file,
     "edit_file": edit_file,
@@ -258,6 +296,10 @@ FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "list_directory": list_directory,
     "read_file": read_file,
     "search_in_files": search_in_files,
+    "move_file": move_file,
+    "copy_file": copy_file,
+    "file_exists": file_exists,
+    "get_file_info": get_file_info,
 }
 
 
