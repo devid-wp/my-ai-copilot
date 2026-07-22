@@ -27,6 +27,9 @@ def test_system_prompt_template_placeholders():
     assert "обычным пользователям" in formatted
     assert "Объясняй новые термины" in formatted
     assert "Если запрос только учебный" in formatted
+    assert "определи намерение пользователя по смыслу всей фразы" in formatted
+    assert "move_file/copy_file" in formatted
+    assert "Не заявляй, что выполнил действие" in formatted
     assert "testdev" not in formatted
     assert "Пользователь:" not in formatted
     assert "abc1234" in formatted
@@ -75,8 +78,13 @@ def test_client_message_structure(monkeypatch):
     assert "tools" not in called_requests[0]
 
 
-def test_client_enables_tools_for_agent_messages(monkeypatch):
-    client = NVIDIAClient(api_key="nvapi-test", system_prompt="system")
+def test_client_enables_tools_for_agent_messages_without_keyword_routing(monkeypatch):
+    client = NVIDIAClient(
+        api_key="nvapi-test",
+        system_prompt="system",
+        model_chat="chat-model",
+        model_code="tool-model",
+    )
     called_requests = []
 
     class MockCompletions:
@@ -89,10 +97,11 @@ def test_client_enables_tools_for_agent_messages(monkeypatch):
 
     monkeypatch.setattr(client.client, "chat", MockChat())
 
-    list(client.ask_stream("", messages=[{"role": "user", "content": "create a file"}]))
+    list(client.ask_stream("", messages=[{"role": "user", "content": "можешь перенетсти это?"}]))
 
     assert called_requests[0]["tools"]
     assert called_requests[0]["tool_choice"] == "auto"
+    assert called_requests[0]["model"] == "tool-model"
 
 
 def test_gemini_chat_omits_tools_but_agent_enables_them(monkeypatch):

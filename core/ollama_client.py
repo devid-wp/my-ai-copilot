@@ -80,7 +80,7 @@ class OllamaClient:
                 ollama_messages.append({"role": "user", "content": prompt})
 
         model_prompt = prompt or (ollama_messages[-1]["content"] if ollama_messages else "")
-        selected = self.select_model(model_prompt)
+        selected = self.model_code if external_messages else self.select_model(model_prompt)
 
         payload = {
             "model": selected,

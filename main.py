@@ -32,9 +32,8 @@ from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_catalog import nvidia_models, select_nvidia_model
 from core.rate_limits import rate_limit_monitor
-from core.router import is_read_only_intent, should_use_agent
 from core.tool_protocol import normalize_tool_call
-from core.tools import AgentLimits, ToolError, ToolResult, ToolStatus
+from core.tools import AgentLimits, ToolResult, ToolStatus
 from core.undo import undo_last_action
 from core.verification import verify_agent_changes
 
@@ -559,8 +558,6 @@ def run_agent(
     guard = AgentLoopGuard(limits)
     guard.count_text(prompt)
     console.execution_plan(execution_plan(prompt))
-    read_only = is_read_only_intent(prompt)
-
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)
 
@@ -579,7 +576,7 @@ def run_agent(
             memory.history.insert(0, {"role": "system", "content": client.system_prompt})
         memory.save()
 
-        console.step(step, limits.max_steps, client.select_model(prompt))
+        console.step(step, limits.max_steps, client.model_code)
         response = console.stream(client.ask_stream("", messages=memory.get_history()))
         guard.count_text(response)
         console.agent_budget(step, guard)
@@ -624,17 +621,6 @@ def run_agent(
                 console.tool(name, arguments)
                 call = normalize_tool_call({**tool_call, "function": {**function, "arguments": arguments}})
                 guard_error = guard.inspect(call)
-                if read_only and name in {
-                    "create_file",
-                    "edit_file",
-                    "delete_file",
-                    "make_directory",
-                    "execute_cmd",
-                }:
-                    guard_error = ToolError(
-                        code="READ_ONLY_INTENT",
-                        message="Inspection-only request: workspace mutation was blocked.",
-                    )
                 typed_result = (
                     ToolResult(
                         call_id=call.id,
@@ -773,7 +759,7 @@ def main(argv: list[str] | None = None) -> int:
                 settings.model,
                 build_system_prompt(settings.project_root, args.user, session),
             )
-            if should_use_agent(settings.agent, args.oneshot):
+            if settings.agent:
                 run_agent(
                     client,
                     args.oneshot,
@@ -818,7 +804,7 @@ def main(argv: list[str] | None = None) -> int:
                     settings.model,
                     build_system_prompt(settings.project_root, args.user, session),
                 )
-            if should_use_agent(settings.agent, prompt):
+            if settings.agent:
                 run_agent(
                     client,
                     prompt,

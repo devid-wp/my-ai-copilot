@@ -57,7 +57,7 @@ class NVIDIAClient:
         tool_buffers: dict[int, dict[str, Any]] = {}
         content: list[str] = []
         request: dict[str, Any] = {
-            "model": self.select_model(routing_prompt),
+            "model": self.model_code if external_messages else self.select_model(routing_prompt),
             "messages": self._clean_messages(messages),
             "temperature": response_temperature(),
             "max_tokens": response_token_limit(),

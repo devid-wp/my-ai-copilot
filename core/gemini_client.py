@@ -74,7 +74,7 @@ class GeminiClient:
                     item["tool_calls"] = m["tool_calls"]
                 clean_messages.append(item)
 
-        selected = self.select_model(model_prompt)
+        selected = self.model_code if external_messages else self.select_model(model_prompt)
         full_response = []
 
         request: dict[str, Any] = {
