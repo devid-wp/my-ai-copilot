@@ -28,8 +28,9 @@ from core.credentials import (
 from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
-from core.provider_catalog import nvidia_models, select_nvidia_model
+from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
+from core.provider_catalog import nvidia_models, select_nvidia_model
 from core.router import is_read_only_intent, should_use_agent
 from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolError, ToolResult, ToolStatus
@@ -548,13 +549,14 @@ def run_agent(
         return True if auto_approve else console.confirm(action, detail)
 
     tool_registry = create_tool_registry(project_root, approve, auto_approve=auto_approve)
+    prompt_cache = PromptCache(lambda: build_system_prompt(project_root, username, memory))
 
     for step in range(1, limits.max_steps + 1):
         exhausted = guard.budget_error()
         if exhausted is not None:
             console.error(exhausted.message)
             return
-        client.system_prompt = build_system_prompt(project_root, username, memory)
+        client.system_prompt = prompt_cache.get()
         if memory.history and memory.history[0].get("role") == "system":
             memory.history[0]["content"] = client.system_prompt
         else:
@@ -628,6 +630,16 @@ def run_agent(
                     else tool_registry.execute(call)
                 )
                 guard.record(call, typed_result)
+                if typed_result.status is ToolStatus.SUCCESS and name in {
+                    "create_file",
+                    "edit_file",
+                    "delete_file",
+                    "make_directory",
+                    "move_file",
+                    "copy_file",
+                    "format_code",
+                }:
+                    prompt_cache.invalidate()
                 result = tool_result_payload(typed_result)
             memory.add(
                 "tool",
