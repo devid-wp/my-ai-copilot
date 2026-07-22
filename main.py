@@ -439,6 +439,14 @@ def run_chat(client: Any, prompt: str, console: Console) -> None:
     console.stream(client.ask_stream(prompt))
 
 
+def execution_plan(prompt: str) -> list[str]:
+    """Build a short, honest preview without asking the model to mutate anything."""
+    lowered = prompt.casefold()
+    if any(word in lowered for word in ("проверь", "review", "check", "inspect", "что делает")):
+        return ["Изучить структуру проекта", "Проверить относящиеся к запросу файлы", "Сообщить результат"]
+    return ["Изучить нужные файлы", "Внести запрошенные изменения", "Проверить результат"]
+
+
 def run_agent(
     client: Any,
     prompt: str,
@@ -452,6 +460,7 @@ def run_agent(
     memory.add("user", prompt)
     limits = AgentLimits(max_steps=max_steps)
     guard = AgentLoopGuard(limits)
+    console.execution_plan(execution_plan(prompt))
 
     def approve(action: str, detail: str) -> bool:
         return True if auto_approve else console.confirm(action, detail)

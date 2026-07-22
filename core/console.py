@@ -217,6 +217,10 @@ class Console:
             )
         )
 
+    def execution_plan(self, steps: list[str]) -> None:
+        body = Text("\n".join(f"{index}. {step}" for index, step in enumerate(steps, 1)))
+        self.output.print(Panel(body, title="[bold]План[/bold]", border_style=PURPLE, box=box.ROUNDED))
+
     def activity(self, message: str) -> None:
         self.output.print(Text.assemble(("◇ ", CYAN), (message, MUTED)))
 
