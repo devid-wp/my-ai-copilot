@@ -30,7 +30,6 @@ from core.credentials import (
 from core.diagnostics import SessionDiagnostics
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
-from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_catalog import recommended_nvidia_models, select_nvidia_model
 from core.provider_runtime import explain_provider_error, provider_name
@@ -423,7 +422,7 @@ def handle_slash(
         return client, False
     if command == "project":
         if not value:
-            console.error("Укажите папку: /project C:\\Users\\name\\Desktop")
+            console.error("Укажите папку: /project PATH")
             return client, False
         target = Path(value).expanduser().resolve()
         if not target.is_dir():
@@ -593,14 +592,16 @@ def run_agent(
         approve_external=approve_external,
         approved_external_paths=approved_external_paths,
     )
-    prompt_cache = PromptCache(lambda: build_system_prompt(project_root, username, memory))
+    prompt_dirty = False
 
     for _step in range(1, limits.max_steps + 1):
         exhausted = guard.budget_error()
         if exhausted is not None:
             console.error(exhausted.message)
             return
-        client.system_prompt = prompt_cache.get()
+        if prompt_dirty:
+            client.system_prompt = build_system_prompt(project_root, username, memory)
+            prompt_dirty = False
         if memory.history and memory.history[0].get("role") == "system":
             memory.history[0]["content"] = client.system_prompt
         else:
@@ -673,7 +674,7 @@ def run_agent(
                     "copy_file",
                     "format_code",
                 }:
-                    prompt_cache.invalidate()
+                    prompt_dirty = True
                 result = tool_result_payload(typed_result)
             memory.add(
                 "tool",
@@ -786,6 +787,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.oneshot:
         try:
+            console.activity(f"Анализ рабочей папки: {settings.project_root}")
             client = create_client(
                 settings.provider,
                 settings.model,
@@ -832,6 +834,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         try:
             if client is None:
+                console.activity(f"Анализ рабочей папки: {settings.project_root}")
                 client = create_client(
                     settings.provider,
                     settings.model,

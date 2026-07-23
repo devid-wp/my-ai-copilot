@@ -79,6 +79,7 @@ SKIP_FILES = {
 MAX_FILE_SIZE = 12_000
 MAX_TOTAL_SIZE = 32_000
 MAX_INSTRUCTIONS_SIZE = 12_000
+MAX_TOP_LEVEL_ENTRIES = 120
 
 
 def get_project_instructions(project_root: str) -> str:
@@ -98,76 +99,60 @@ def _should_read(fname):
 
 def get_project_context(project_root):
     """
-    Сканирует каталог проекта и возвращает отформатированный
-    контекст для LLM: дерево файлов + содержимое.
+    Return a bounded top-level snapshot.
+
+    Deeper project exploration is deliberately delegated to agent tools so
+    launching Citadex from a broad directory never walks an entire drive.
     """
     project_root = os.path.normpath(os.path.abspath(project_root))
 
     if not os.path.isdir(project_root):
         return f"Project directory not found: {project_root}"
 
-    tree_lines = []
-    file_sections = []
+    tree_lines: list[str] = []
+    file_sections: list[str] = []
     total_size = 0
     ignore_rules = load_ignore_rules(project_root)
+    try:
+        with os.scandir(project_root) as scanner:
+            entries = sorted(scanner, key=lambda entry: entry.name.casefold())
+    except OSError:
+        entries = []
 
-    for root, dirs, files in os.walk(project_root):
-        # Фильтруем каталоги — пропускаем скрытые и ненужные
-        dirs[:] = sorted(
-            d
-            for d in dirs
-            if d not in SKIP_DIRS
-            and not d.startswith(".")
-            and not is_ignored_path(os.path.join(root, d), project_root, ignore_rules)
-        )
+    visible = []
+    for entry in entries:
+        name = entry.name
+        path = entry.path
+        if name in SKIP_FILES or name in SKIP_DIRS or name.startswith("."):
+            continue
+        if is_ignored_path(path, project_root, ignore_rules):
+            continue
+        visible.append(entry)
 
-        rel_root = os.path.relpath(root, project_root)
-        if rel_root == ".":
-            rel_root = ""
+    for entry in visible[:MAX_TOP_LEVEL_ENTRIES]:
+        try:
+            is_directory = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            is_directory = False
+        tree_lines.append(f"  {entry.name}/" if is_directory else f"  {entry.name}")
+        if is_directory or not _should_read(entry.name):
+            continue
+        try:
+            fsize = entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            continue
+        if fsize == 0 or fsize > MAX_FILE_SIZE or total_size + fsize > MAX_TOTAL_SIZE:
+            continue
+        try:
+            with open(entry.path, encoding="utf-8", errors="ignore") as stream:
+                content = stream.read(MAX_FILE_SIZE)
+        except OSError:
+            continue
+        file_sections.append(f"--- {entry.name} ---\n{content}")
+        total_size += len(content)
 
-        depth = 0 if not rel_root else rel_root.count(os.sep) + 1
-        indent = "  " * depth
-
-        if rel_root:
-            tree_lines.append(f"{indent}{os.path.basename(root)}/")
-
-        for fname in sorted(files):
-            if is_ignored_path(os.path.join(root, fname), project_root, ignore_rules):
-                continue
-            if fname in SKIP_FILES:
-                continue
-
-            file_indent = "  " * (depth + 1)
-            tree_lines.append(f"{file_indent}{fname}")
-
-            # Читаем только подходящие файлы
-            if not _should_read(fname):
-                continue
-
-            full_path = os.path.join(root, fname)
-
-            try:
-                fsize = os.path.getsize(full_path)
-            except OSError:
-                continue
-
-            if fsize > MAX_FILE_SIZE or fsize == 0:
-                continue
-
-            if total_size + fsize > MAX_TOTAL_SIZE:
-                continue
-
-            try:
-                with open(full_path, encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-            except OSError:
-                continue
-
-            rel_path = os.path.join(rel_root, fname) if rel_root else fname
-            rel_path = rel_path.replace(os.sep, "/")
-
-            file_sections.append(f"--- {rel_path} ---\n{content}")
-            total_size += len(content)
+    if len(visible) > MAX_TOP_LEVEL_ENTRIES:
+        tree_lines.append(f"  … {len(visible) - MAX_TOP_LEVEL_ENTRIES} more top-level entries")
 
     # Собираем контекст
     from core.project_environment import detect_project_environment
