@@ -51,6 +51,18 @@ cp .env.example .env
 
 ## Запуск
 
+### Windows EXE
+
+Готовая сборка запускается без установленного Python:
+
+```text
+dist\Citadex.exe
+```
+
+Для самостоятельной сборки сначала запустите `setup.bat`, затем `build_exe.bat`.
+Готовый файл появится в `dist\Citadex.exe`. Команда `run_citadex.bat` автоматически
+запускает EXE или установленную Python-версию.
+
 Обычный чат:
 
 ```bash
@@ -72,6 +84,7 @@ citadex --provider nvidia --project .
 /mode            переключить chat/agent
 /permissions     выбрать ask/auto
 /status          проверить провайдера, модель, tools и состояние сессии
+/doctor          проверить Python, проект, Git, API-ключ, модель и Ollama
 /clear           очистить историю
 /help            показать все команды
 ```
