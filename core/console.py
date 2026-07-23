@@ -33,6 +33,7 @@ SURFACE = "#18181b"
 
 TOOL_ACTIONS = {
     "create_file": "WRITE",
+    "write_file": "WRITE",
     "edit_file": "EDIT",
     "delete_file": "DELETE",
     "make_directory": "MKDIR",
@@ -59,6 +60,7 @@ SLASH_COMMANDS = [
     "/undo",
     "/permissions",
     "/status",
+    "/doctor",
     "/clear",
     "/help",
     "/exit",
@@ -422,6 +424,7 @@ class Console:
             ("/mode [chat|agent]", "переключить режим работы"),
             ("/permissions [ask|auto]", "настроить подтверждения действий"),
             ("/status", "показать настройки сессии"),
+            ("/doctor", "проверить окружение, провайдера и модель"),
             ("/clear", "очистить историю"),
             ("/exit", "выйти"),
         ]

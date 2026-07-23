@@ -35,6 +35,7 @@ from core.credentials import (
     validate_api_key,
 )
 from core.diagnostics import SessionDiagnostics
+from core.doctor import collect_doctor_checks
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
@@ -372,6 +373,29 @@ def handle_slash(
         return client, False
     if command == "status":
         console.status(session_diagnostics(settings, session, client))
+        return client, False
+    if command == "doctor":
+        try:
+            available_models = provider_models(settings.provider)
+        except Exception as exc:
+            available_models = None
+            console.warning(f"Каталог моделей недоступен: {exc}")
+        try:
+            ollama_online = bool(provider_models("ollama"))
+        except Exception:
+            ollama_online = False
+        checks = collect_doctor_checks(
+            settings.project_root,
+            settings.provider,
+            settings.display_model,
+            available_models,
+            ollama_online=ollama_online,
+        )
+        for check in checks:
+            message = f"{check.name}: {check.detail}"
+            (console.success if check.ok else console.warning)(message)
+        passed = sum(check.ok for check in checks)
+        console.activity(f"Doctor: {passed}/{len(checks)} проверок пройдено")
         return client, False
     if command == "keys":
         statuses = credential_status()
