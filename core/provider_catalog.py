@@ -10,11 +10,74 @@ from openai import OpenAI
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL_FALLBACKS = (
-    "meta/llama-3.3-70b-instruct",
     "meta/llama-3.1-8b-instruct",
+    "meta/llama-3.3-70b-instruct",
+)
+NON_CHAT_MARKERS = (
+    "embed",
+    "rerank",
+    "retriever",
+    "vision",
+    "-vl",
+    "clip",
+    "detector",
+    "safety",
+    "guard",
+    "reward",
+    "translate",
+    "deplot",
+    "fuyu",
+    "parse",
+    "calibration",
+    "cosmos",
+    "kosmos",
+    "neva",
+    "vila",
+)
+CHAT_MARKERS = (
+    "instruct",
+    "chat",
+    "coder",
+    "reasoning",
+    "reason",
+    "flash",
+    "pro",
+    "gpt-oss",
+    "glm",
+    "jamba",
+    "kimi",
+    "laguna",
+    "mistral",
+    "mixtral",
+    "qwen",
+    "gemma",
+    "llama",
+    "nemotron",
+    "minimax",
+    "inkling",
 )
 MODEL_CACHE_SECONDS = 300
 _nvidia_cache: tuple[float, bytes, tuple[str, ...]] | None = None
+
+
+def is_nvidia_chat_model(model: str) -> bool:
+    """Conservatively keep models intended for text generation."""
+    lowered = model.casefold()
+    return not any(marker in lowered for marker in NON_CHAT_MARKERS) and any(
+        marker in lowered for marker in CHAT_MARKERS
+    )
+
+
+def _model_rank(model: str) -> tuple[int, int, str]:
+    """Prefer fast instruct/tool candidates while keeping stable alphabetical order."""
+    lowered = model.casefold()
+    preferred = next(
+        (index for index, candidate in enumerate(NVIDIA_MODEL_FALLBACKS) if model == candidate),
+        len(NVIDIA_MODEL_FALLBACKS),
+    )
+    slow_markers = ("reason", "pro", "120b", "253b", "340b", "550b", "675b")
+    slow_penalty = 1 if any(marker in lowered for marker in slow_markers) else 0
+    return preferred, slow_penalty, lowered
 
 
 def nvidia_models(api_key: str, *, refresh: bool = False) -> list[str]:
@@ -32,9 +95,10 @@ def nvidia_models(api_key: str, *, refresh: bool = False) -> list[str]:
     ):
         return list(_nvidia_cache[2])
     response = OpenAI(api_key=api_key, base_url=NVIDIA_BASE_URL).models.list()
-    models = tuple(sorted({str(item.id) for item in response.data if getattr(item, "id", None)}))
+    discovered = {str(item.id) for item in response.data if getattr(item, "id", None)}
+    models = tuple(sorted((model for model in discovered if is_nvidia_chat_model(model)), key=_model_rank))
     if not models:
-        raise RuntimeError("NVIDIA API returned no available models for this key.")
+        raise RuntimeError("NVIDIA API returned no compatible text chat models for this key.")
     _nvidia_cache = (now, fingerprint, models)
     return list(models)
 
@@ -47,13 +111,7 @@ def select_nvidia_model(api_key: str, preferred: str | None = None) -> str:
     for candidate in NVIDIA_MODEL_FALLBACKS:
         if candidate in models:
             return candidate
-    likely_chat = [
-        model
-        for model in models
-        if any(marker in model.casefold() for marker in ("instruct", "chat"))
-        and not any(marker in model.casefold() for marker in ("embed", "rerank", "vision"))
-    ]
-    return likely_chat[0] if likely_chat else models[0]
+    return models[0]
 
 
 def clear_model_cache() -> None:
@@ -61,4 +119,4 @@ def clear_model_cache() -> None:
     _nvidia_cache = None
 
 
-__all__ = ["clear_model_cache", "nvidia_models", "select_nvidia_model"]
+__all__ = ["clear_model_cache", "is_nvidia_chat_model", "nvidia_models", "select_nvidia_model"]
