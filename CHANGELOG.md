@@ -1,30 +1,60 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-07-23
 
-- Rebuilt Citadex as a CLI-only application.
-- Added NVIDIA, Gemini and Ollama provider support.
-- Added approval prompts and protected paths.
-- Removed shell-based command execution and legacy text actions.
-- Added packaging, tests and CI configuration.
-- Added interactive `/provider`, `/model`, `/mode`, `/permissions` and `/status` commands.
-- Redesigned the terminal UI with rich panels, menus, status badges and command completion.
-- Added provider-neutral typed contracts for the tool-calling runtime.
-- Added a central tool registry with stable schemas and structured dispatch errors.
-- Added secure API-key setup when selecting a cloud provider interactively.
-- Fixed password masking remaining enabled after entering a provider API key.
-- Migrated built-in tool definitions and runtime dispatch to the central registry.
-- Added JSON Schema validation before any tool handler is executed.
-- Redesigned tool-call output with compact actions, safe previews and structured results.
-- Allowed replacing saved provider keys and rejected invalid NVIDIA key formats.
-- Enabled native Ollama tool calls and surfaced local API errors instead of empty replies.
-- Fixed streamed Ollama errors and populated the model menu from the local server.
-- Centralized tool authorization around risk-aware permission policies.
-- Added agent-loop guards for repeated calls, error streaks, pseudo-calls and action summaries.
-- Added a cached native-tool compatibility probe before enabling Ollama agent mode.
-- Expanded `/status` with provider health, model availability, tools and session diagnostics.
-- Added a first-run wizard with one-time API-key setup and remembered defaults.
-- Fixed empty cloud chat replies and completed provider switching with model selection.
-- Routed conversational prompts safely through chat even while agent mode is enabled.
-- Added in-session project switching and actionable handling for paths outside the workspace.
-- Added remembered ask/auto permission selection to the agent startup flow.
+Первый публичный alpha-релиз Citadex.
+
+### Добавлено
+
+- Интерактивный CLI с режимами `chat` и `agent`.
+- Провайдеры NVIDIA NIM, Google Gemini и локальный Ollama.
+- Native tool calling через единый провайдер-независимый протокол.
+- Инструменты чтения, поиска, создания, редактирования, удаления, копирования и перемещения.
+- Инструменты Git status/diff, запуска тестов, команд и форматирования.
+- Определение языка, фреймворка, команд запуска, тестов и Git-состояния проекта.
+- Правила `.citadexignore` и инструкции проекта `.citadex.md`.
+- Предпросмотр diff перед подтверждением изменений.
+- Проверка изменённых файлов, синтаксиса и релевантных тестов.
+- `/undo` для отмены последнего поддерживаемого файлового изменения.
+- `/keys`, `/status`, `/provider`, `/model`, `/mode`, `/project` и `/permissions`.
+- Безопасное хранение API-ключей вне проекта без отображения их значений.
+- Быстрый старт с сохранёнными настройками и текущей директорией запуска.
+- Одноразовое разрешение внешних путей с запоминанием до закрытия CLI.
+- Внутренние бюджеты шагов, tool calls, времени, ошибок и токенов.
+- Windows BAT для простой установки и настройки API.
+- Opt-in E2E smoke-тест `create_file → read_file → delete_file`.
+- Команда `citadex --version`.
+
+### Безопасность
+
+- Все tools проходят JSON Schema validation и централизованную проверку риска.
+- Защищены корень проекта, `.git`, `.env`, ключи и игнорируемые пути.
+- Команды запускаются без shell; chaining, redirects и inline interpreter code запрещены.
+- Agent-режим включается только после native tool compatibility probe выбранной модели.
+- Доступ вне проекта требует отдельного явного подтверждения даже в режиме `auto`.
+
+### Исправлено
+
+- Устранены псевдовызовы tools и бесконечное повторение одинаковых ошибок.
+- Исправлена замена API-ключа без пересоздания активного клиента.
+- Проверка ключей больше не загружает каталог моделей и завершается максимум за 15 секунд.
+- Добавлены понятные ошибки timeout, rate limit, неверного ключа и сетевого подключения.
+- Ограничены скрытые повторы SDK и ожидание первого токена.
+- Каталог NVIDIA очищен от embedding, vision, safety, reward и мультимедийных моделей.
+- Меню NVIDIA сокращено до 12 рекомендованных моделей.
+- Исправлен перенос каталогов и работа с подтверждёнными внешними путями.
+- Восстановлен классический дизайн терминала и упрощён шумный progress output.
+- Исправлена совместимость с Python 3.10–3.13.
+
+### Проверка качества
+
+- 177 автоматических тестов на Windows.
+- CI для Windows, Linux и macOS на Python 3.10–3.13.
+- Ruff, mypy, wheel/sdist build и живой NVIDIA tool-calling smoke-test.
+
+### Известные ограничения
+
+- Бесплатные API-тарифы NVIDIA и Gemini могут иметь небольшие rate limits и очереди.
+- `/undo` пока хранит только последнее поддерживаемое действие и не полностью восстанавливает каталоги.
+- Живой Gemini tool smoke-test зависит от доступного дневного лимита.
+- Windows one-file EXE с локальной моделью запланирован после стабилизации API-релиза.
