@@ -57,6 +57,22 @@ BUILTIN_TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         risk=ToolRisk.PROJECT_WRITE,
     ),
     ToolDefinition(
+        name="write_file",
+        description=(
+            "Replace the complete contents of a file atomically. "
+            "Use after read_file when rewriting a small existing file."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Relative path to the file."},
+                "content": {"type": "string", "description": "Complete new file contents."},
+            },
+            "required": ["path", "content"],
+        },
+        risk=ToolRisk.PROJECT_WRITE,
+    ),
+    ToolDefinition(
         name="delete_file",
         description="Permanently delete a file or directory inside the project root.",
         input_schema={

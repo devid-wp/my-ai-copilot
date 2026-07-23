@@ -657,7 +657,14 @@ def run_agent(
             changed_paths = [
                 record.detail
                 for record in guard.records
-                if record.name in {"create_file", "edit_file", "move_file", "copy_file", "format_code"}
+                if record.name in {
+                    "create_file",
+                    "write_file",
+                    "edit_file",
+                    "move_file",
+                    "copy_file",
+                    "format_code",
+                }
                 and record.status is ToolStatus.SUCCESS
             ]
             if changed_paths:
@@ -709,6 +716,7 @@ def run_agent(
                     inspected_paths.add(tool_path_key(project_root, arguments))
                 if typed_result.status is ToolStatus.SUCCESS and name in {
                     "create_file",
+                    "write_file",
                     "edit_file",
                     "delete_file",
                     "make_directory",

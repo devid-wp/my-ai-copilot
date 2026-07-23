@@ -162,7 +162,7 @@ def require_read_before_edit(
     inspected_paths: set[str],
 ) -> ToolError | None:
     """Prevent line-based edits based on guessed file contents."""
-    if call.name != "edit_file":
+    if call.name not in {"edit_file", "write_file"}:
         return None
     if tool_path_key(project_root, call.arguments) in inspected_paths:
         return None

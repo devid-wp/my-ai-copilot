@@ -40,14 +40,14 @@ _EXTERNAL_ROOTS: ContextVar[tuple[Path, ...]] = ContextVar("citadex_external_roo
 
 def preview_file_change(tool_name: str, args: dict[str, Any], project_root: str, limit: int = 40) -> str:
     """Return a bounded unified diff suitable for an approval prompt."""
-    if tool_name not in {"create_file", "edit_file"} or "path" not in args:
+    if tool_name not in {"create_file", "write_file", "edit_file"} or "path" not in args:
         return str(args.get("path") or args.get("command") or tool_name)
     try:
         path = _target(project_root, str(args["path"]))
     except PermissionError:
         return str(args["path"])
     before = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-    if tool_name == "create_file":
+    if tool_name in {"create_file", "write_file"}:
         after = str(args.get("content", ""))
     else:
         lines = before.splitlines(keepends=True)
@@ -418,6 +418,7 @@ def format_code(args: dict[str, Any], project_root: str) -> dict[str, Any]:
 
 FUNCTION_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "create_file": create_file,
+    "write_file": create_file,
     "edit_file": edit_file,
     "delete_file": delete_file,
     "make_directory": make_directory,

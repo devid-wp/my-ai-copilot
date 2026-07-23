@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -63,6 +64,20 @@ class TestCreateFile:
             approve=allow,
         )
         assert "error" in result or result.get("status") == "error"
+
+
+def test_write_file_replaces_complete_content_and_can_be_undone(tmp_project):
+    target = Path(tmp_project) / "page.html"
+    target.write_text("<h1>Old</h1>", encoding="utf-8")
+
+    result = dispatch_function(
+        "write_file",
+        {"path": "page.html", "content": "<h1>New</h1>\n"},
+        tmp_project,
+    )
+
+    assert result["status"] == "updated"
+    assert target.read_text(encoding="utf-8") == "<h1>New</h1>\n"
 
 
 # ─── read_file ───────────────────────────────────────────────────────────────
