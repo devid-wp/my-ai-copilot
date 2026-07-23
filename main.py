@@ -40,6 +40,7 @@ from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolResult, ToolStatus
 from core.undo import undo_last_action
 from core.verification import verify_agent_changes
+from core.version import get_version
 
 PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
@@ -709,6 +710,7 @@ def run_agent(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {get_version()}")
     parser.add_argument("--project", "-p", default=None, help="Корень проекта")
     parser.add_argument("--provider", choices=["nvidia", "gemini", "ollama"], default=None)
     parser.add_argument("--model", "-m", help="Одна модель для чата и кода")
