@@ -35,6 +35,7 @@ from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_catalog import recommended_nvidia_models, select_nvidia_model
 from core.provider_runtime import explain_provider_error, provider_name
 from core.rate_limits import rate_limit_monitor
+from core.tool_compatibility import ToolCompatibility, probe_cloud_tool_support
 from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolResult, ToolStatus
 from core.undo import undo_last_action
@@ -113,25 +114,29 @@ def provider_models(provider: str) -> list[str]:
 
 
 def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bool:
-    if settings.provider != "ollama":
-        settings.tool_compatibility = "supported"
-        return True
-
-    from core.ollama_client import OllamaClient, ToolCompatibility
-
     model = settings.display_model
     console.activity(f"Проверка native tools: {model}")
-    client = OllamaClient(
-        "",
-        model_chat=model,
-        model_code=model,
-        base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
-    )
     try:
-        compatibility = client.check_tool_support(model)
-    except RuntimeError as exc:
+        if settings.provider == "ollama":
+            from core.ollama_client import OllamaClient
+
+            client = OllamaClient(
+                "",
+                model_chat=model,
+                model_code=model,
+                base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
+            )
+            compatibility = client.check_tool_support(model)
+        else:
+            environment_name = PROVIDER_API_KEYS[settings.provider]
+            compatibility = probe_cloud_tool_support(
+                settings.provider,
+                model,
+                os.getenv(environment_name, ""),
+            )
+    except Exception as exc:
         settings.tool_compatibility = "unavailable"
-        console.error(str(exc))
+        console.error(explain_provider_error(exc, settings.provider.upper()))
         return False
     settings.tool_compatibility = compatibility.value
     if compatibility is ToolCompatibility.SUPPORTED:

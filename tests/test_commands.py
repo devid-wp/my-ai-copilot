@@ -1,4 +1,5 @@
-from main import SessionSettings, handle_slash, parse_slash
+from core.tool_compatibility import ToolCompatibility
+from main import SessionSettings, handle_slash, parse_slash, verify_tool_compatibility
 
 
 class FakeConsole:
@@ -165,6 +166,18 @@ def test_ollama_rejects_agent_mode_when_model_is_incompatible(monkeypatch):
     handle_slash(("mode", "agent"), settings, FakeConsole(), FakeSession(), None)
 
     assert settings.agent is False
+
+
+def test_cloud_agent_mode_requires_native_tool_support(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key")
+    monkeypatch.setattr(
+        "main.probe_cloud_tool_support",
+        lambda *_args: ToolCompatibility.UNRELIABLE,
+    )
+    settings = SessionSettings(provider="nvidia", model="weak-model")
+
+    assert verify_tool_compatibility(settings, FakeConsole()) is False
+    assert settings.tool_compatibility == "unreliable"
 
 
 def test_permissions_command_changes_policy():

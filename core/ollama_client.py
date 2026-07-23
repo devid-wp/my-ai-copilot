@@ -1,7 +1,6 @@
 # core/ollama_client.py
 import json
 from collections.abc import Generator
-from enum import Enum
 from functools import lru_cache
 from typing import Any
 
@@ -9,14 +8,10 @@ import httpx
 
 from core.router import classify_prompt
 from core.runtime_config import response_temperature, response_token_limit
+from core.tool_compatibility import ToolCompatibility
 from core.tool_protocol import provider_tool_schemas
 
 TOOLS = provider_tool_schemas()
-
-
-class ToolCompatibility(str, Enum):
-    SUPPORTED = "supported"
-    UNRELIABLE = "unreliable"
 
 
 class OllamaClient:
