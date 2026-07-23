@@ -126,6 +126,16 @@ python -m mypy core main.py
 python -m build
 ```
 
+Живая проверка native tool calling запускается вручную и использует безопасную временную папку:
+
+```bash
+citadex-tool-smoke --provider nvidia --model meta/llama-3.1-8b-instruct
+citadex-tool-smoke --provider gemini --model gemini-2.0-flash
+```
+
+Тест требует настоящий API-ключ и последовательно проверяет `create_file`, `read_file` и
+`delete_file`. В обычный запуск `pytest` сетевые запросы не входят.
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).

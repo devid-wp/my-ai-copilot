@@ -31,10 +31,11 @@ dev = [
 
 [project.scripts]
 citadex = "main:main"
+citadex-tool-smoke = "citadex_smoke:main"
 
 [tool.setuptools]
 packages = ["core", "core.tools"]
-py-modules = ["main", "citadex_windows", "citadex_api"]
+py-modules = ["main", "citadex_windows", "citadex_api", "citadex_smoke"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

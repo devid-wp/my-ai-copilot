@@ -146,6 +146,14 @@ def _setup_logger(project_root: str) -> logging.Logger:
     return logger
 
 
+def close_project_logger(project_root: str) -> None:
+    """Release file handles for disposable projects such as smoke-test sandboxes."""
+    logger = logging.getLogger(f"citadex.agent.{Path(project_root).resolve()}")
+    for handler in tuple(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+
 __all__ = [
     "ALLOWED_COMMANDS",
     "ApprovalCallback",
@@ -156,5 +164,6 @@ __all__ = [
     "is_path_inside_root",
     "parse_command",
     "require_approval",
+    "close_project_logger",
     "_setup_logger",
 ]
