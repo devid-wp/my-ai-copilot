@@ -256,6 +256,12 @@ class Console:
         self.output.print("\n")
         return "".join(parts)
 
+    def response(self, content: str) -> None:
+        """Render a completed response after agent tool-call detection."""
+        self.output.print(Text("CITADEX", style=f"bold {PURPLE}"), end=" ")
+        self.output.print(content, markup=False, highlight=False)
+        self.output.print()
+
     def activity(self, message: str) -> None:
         self.output.print(Text.assemble(("◇ ", CYAN), (message, MUTED)))
 

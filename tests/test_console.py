@@ -95,6 +95,20 @@ def test_tool_error_rendering_includes_structured_code(monkeypatch):
     assert "'path' is required" in rendered
 
 
+def test_completed_response_renders_after_buffering(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=120)
+
+    console.response("Hello from Citadex")
+
+    rendered = stream.getvalue()
+    assert "CITADEX" in rendered
+    assert "Hello from Citadex" in rendered
+
+
 def test_agent_summary_lists_actions(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: False)

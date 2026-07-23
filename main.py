@@ -610,10 +610,12 @@ def run_agent(
 
         console.activity(f"Подключение к {provider_name(client)}…")
         started = perf_counter()
-        response = console.stream(client.ask_stream("", messages=memory.get_history()))
+        response = "".join(client.ask_stream("", messages=memory.get_history()))
         console.activity(f"Ответ получен за {perf_counter() - started:.1f} с")
         guard.count_text(response)
         tool_calls = client.get_last_tool_calls()
+        if not tool_calls:
+            console.response(response)
         memory.add("assistant", response, tool_calls=tool_calls or None)
 
         if not tool_calls:
