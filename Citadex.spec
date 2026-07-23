@@ -32,6 +32,7 @@ exe = EXE(
     analysis.datas,
     [],
     name="Citadex",
+    icon="assets/citadex.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
