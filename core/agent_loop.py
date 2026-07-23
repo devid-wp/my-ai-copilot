@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -115,6 +117,8 @@ def recovery_advice(code: str, project_root: str) -> str:
         return "Выберите модель с поддержкой native tool calling."
     if code in {"REPEATED_TOOL_CALL", "RETRY_WITHOUT_CHANGE"}:
         return "Измените аргументы или способ выполнения; одинаковый вызов повторён не будет."
+    if code == "READ_BEFORE_EDIT_REQUIRED":
+        return "Сначала прочитайте актуальное содержимое файла через read_file, затем повторите edit_file."
     return "Проверьте входные данные инструмента и повторите запрос с исправленными параметрами."
 
 
@@ -136,6 +140,34 @@ def pseudo_tool_name(response: str) -> str | None:
     return payload["name"]
 
 
+def tool_path_key(project_root: str, arguments: dict[str, Any]) -> str:
+    """Return a stable key for comparing paths used by file tools."""
+    raw_path = str(arguments.get("path", "")).strip()
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = Path(project_root) / path
+    return os.path.normcase(str(path.resolve(strict=False)))
+
+
+def require_read_before_edit(
+    call: ToolCall,
+    project_root: str,
+    inspected_paths: set[str],
+) -> ToolError | None:
+    """Prevent line-based edits based on guessed file contents."""
+    if call.name != "edit_file":
+        return None
+    if tool_path_key(project_root, call.arguments) in inspected_paths:
+        return None
+    return ToolError(
+        code="READ_BEFORE_EDIT_REQUIRED",
+        message=(
+            "Read this file with read_file before editing it. "
+            "Then build patches from the exact content and line numbers returned."
+        ),
+    )
+
+
 def _call_detail(arguments: dict[str, Any]) -> str:
     if arguments.get("path") is not None:
         return str(arguments["path"] or ".")
@@ -146,4 +178,11 @@ def _call_detail(arguments: dict[str, Any]) -> str:
     return ""
 
 
-__all__ = ["AgentLoopGuard", "ToolRunRecord", "pseudo_tool_name", "recovery_advice"]
+__all__ = [
+    "AgentLoopGuard",
+    "ToolRunRecord",
+    "pseudo_tool_name",
+    "recovery_advice",
+    "require_read_before_edit",
+    "tool_path_key",
+]

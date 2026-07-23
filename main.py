@@ -15,7 +15,13 @@ from typing import Any
 from dotenv import load_dotenv
 
 from core.agent_executor import create_tool_registry, tool_result_payload
-from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
+from core.agent_loop import (
+    AgentLoopGuard,
+    pseudo_tool_name,
+    recovery_advice,
+    require_read_before_edit,
+    tool_path_key,
+)
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
 from core.credential_probe import probe_provider_key
@@ -593,6 +599,7 @@ def run_agent(
         approved_external_paths=approved_external_paths,
     )
     prompt_dirty = False
+    inspected_paths: set[str] = set()
 
     for _step in range(1, limits.max_steps + 1):
         exhausted = guard.budget_error()
@@ -655,7 +662,11 @@ def run_agent(
             else:
                 console.tool(name, arguments)
                 call = normalize_tool_call({**tool_call, "function": {**function, "arguments": arguments}})
-                guard_error = guard.inspect(call)
+                guard_error = guard.inspect(call) or require_read_before_edit(
+                    call,
+                    project_root,
+                    inspected_paths,
+                )
                 typed_result = (
                     ToolResult(
                         call_id=call.id,
@@ -667,6 +678,8 @@ def run_agent(
                     else tool_registry.execute(call)
                 )
                 guard.record(call, typed_result)
+                if typed_result.status is ToolStatus.SUCCESS and name == "read_file":
+                    inspected_paths.add(tool_path_key(project_root, arguments))
                 if typed_result.status is ToolStatus.SUCCESS and name in {
                     "create_file",
                     "edit_file",

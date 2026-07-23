@@ -1,4 +1,10 @@
-from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
+from core.agent_loop import (
+    AgentLoopGuard,
+    pseudo_tool_name,
+    recovery_advice,
+    require_read_before_edit,
+    tool_path_key,
+)
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 
 
@@ -73,3 +79,28 @@ def test_guard_tracks_and_limits_estimated_tokens():
     guard.count_text("12345678")
     assert guard.estimated_tokens == 2
     assert guard.budget_error().code == "TOKEN_BUDGET"
+
+
+def test_edit_requires_successful_read_of_same_file(tmp_path):
+    tool_call = ToolCall(
+        id="call_edit",
+        name="edit_file",
+        arguments={"path": "site.html", "patches": []},
+    )
+    inspected = {tool_path_key(str(tmp_path), {"path": "other.html"})}
+
+    error = require_read_before_edit(tool_call, str(tmp_path), inspected)
+
+    assert error is not None
+    assert error.code == "READ_BEFORE_EDIT_REQUIRED"
+
+
+def test_edit_is_allowed_after_reading_same_file(tmp_path):
+    tool_call = ToolCall(
+        id="call_edit",
+        name="edit_file",
+        arguments={"path": "site.html", "patches": []},
+    )
+    inspected = {tool_path_key(str(tmp_path), {"path": "site.html"})}
+
+    assert require_read_before_edit(tool_call, str(tmp_path), inspected) is None
