@@ -9,6 +9,7 @@ import sys
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from dotenv import load_dotenv
@@ -31,6 +32,7 @@ from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_catalog import nvidia_models, select_nvidia_model
+from core.provider_runtime import explain_provider_error, provider_name
 from core.rate_limits import rate_limit_monitor
 from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolResult, ToolStatus
@@ -531,7 +533,10 @@ def create_client(provider: str, model: str | None, system_prompt: str):
 
 
 def run_chat(client: Any, prompt: str, console: Console) -> None:
+    console.activity(f"Подключение к {provider_name(client)}…")
+    started = perf_counter()
     console.stream(client.ask_stream(prompt))
+    console.activity(f"Ответ получен за {perf_counter() - started:.1f} с")
 
 
 def run_agent(
@@ -587,7 +592,10 @@ def run_agent(
             memory.history.insert(0, {"role": "system", "content": client.system_prompt})
         memory.save()
 
+        console.activity(f"Подключение к {provider_name(client)}…")
+        started = perf_counter()
         response = console.stream(client.ask_stream("", messages=memory.get_history()))
+        console.activity(f"Ответ получен за {perf_counter() - started:.1f} с")
         guard.count_text(response)
         tool_calls = client.get_last_tool_calls()
         memory.add("assistant", response, tool_calls=tool_calls or None)
@@ -784,7 +792,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 run_chat(client, args.oneshot, console)
         except Exception as exc:
-            console.error(str(exc))
+            console.error(explain_provider_error(exc, settings.provider.upper()))
             return 2
         return 0
 
@@ -832,7 +840,7 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             console.warning("Запрос остановлен")
         except Exception as exc:
-            console.error(str(exc))
+            console.error(explain_provider_error(exc, settings.provider.upper()))
 
 
 if __name__ == "__main__":

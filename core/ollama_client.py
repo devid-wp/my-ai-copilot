@@ -30,6 +30,7 @@ class OllamaClient:
         base_url: str = "http://localhost:11434",
     ):
         self.system_prompt = system_prompt
+        self.provider_name = "Ollama"
         self.model_chat = model_chat
         self.model_code = model_code
         self.base_url = base_url

@@ -7,6 +7,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from core.provider_runtime import provider_max_retries, provider_timeout
 from core.router import classify_prompt
 from core.runtime_config import response_temperature, response_token_limit
 from core.tool_protocol import provider_tool_schemas
@@ -25,7 +26,13 @@ class NVIDIAClient:
     ) -> None:
         if not api_key:
             raise ValueError("NVIDIA_API_KEY is required")
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=provider_timeout(),
+            max_retries=provider_max_retries(),
+        )
+        self.provider_name = "NVIDIA"
         self.system_prompt = system_prompt
         self.model_chat = model_chat
         self.model_code = model_code
