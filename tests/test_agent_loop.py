@@ -1,9 +1,11 @@
 from core.agent_loop import (
     AgentLoopGuard,
+    ToolRunRecord,
     pseudo_tool_name,
     recovery_advice,
     require_read_before_edit,
     tool_path_key,
+    unresolved_tool_failures,
 )
 from core.tools import AgentLimits, ToolCall, ToolError, ToolResult, ToolStatus
 
@@ -104,3 +106,35 @@ def test_edit_is_allowed_after_reading_same_file(tmp_path):
     inspected = {tool_path_key(str(tmp_path), {"path": "site.html"})}
 
     assert require_read_before_edit(tool_call, str(tmp_path), inspected) is None
+
+
+def test_failure_is_resolved_only_by_later_success_for_same_action():
+    records = [
+        ToolRunRecord("edit_file", ToolStatus.ERROR, "site.html"),
+        ToolRunRecord("read_file", ToolStatus.SUCCESS, "site.html"),
+    ]
+    assert unresolved_tool_failures(records) == [records[0]]
+
+    records.append(ToolRunRecord("edit_file", ToolStatus.SUCCESS, "site.html"))
+
+    assert unresolved_tool_failures(records) == []
+
+
+def test_precondition_failure_can_retry_same_call_after_state_changes():
+    guard = AgentLoopGuard(AgentLimits(max_repeated_calls=5))
+    tool_call = ToolCall(
+        id="call_edit",
+        name="edit_file",
+        arguments={"path": "site.html", "patches": []},
+    )
+    failure = ToolResult(
+        call_id=tool_call.id,
+        name=tool_call.name,
+        status=ToolStatus.ERROR,
+        error=ToolError(code="READ_BEFORE_EDIT_REQUIRED", message="read first"),
+    )
+
+    assert guard.inspect(tool_call) is None
+    guard.record(tool_call, failure, allow_same_retry=True)
+
+    assert guard.inspect(tool_call) is None

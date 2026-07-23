@@ -21,6 +21,7 @@ from core.agent_loop import (
     recovery_advice,
     require_read_before_edit,
     tool_path_key,
+    unresolved_tool_failures,
 )
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
@@ -600,6 +601,7 @@ def run_agent(
     )
     prompt_dirty = False
     inspected_paths: set[str] = set()
+    recovery_attempts = 0
 
     for _step in range(1, limits.max_steps + 1):
         exhausted = guard.budget_error()
@@ -621,8 +623,6 @@ def run_agent(
         console.activity(f"Ответ получен за {perf_counter() - started:.1f} с")
         guard.count_text(response)
         tool_calls = client.get_last_tool_calls()
-        if not tool_calls:
-            console.response(response)
         memory.add("assistant", response, tool_calls=tool_calls or None)
 
         if not tool_calls:
@@ -634,6 +634,26 @@ def run_agent(
                 )
                 console.agent_summary(guard.records, project_root)
                 return
+            unresolved = unresolved_tool_failures(guard.records)
+            if unresolved:
+                if recovery_attempts < 2 and not guard.error_limit_reached:
+                    recovery_attempts += 1
+                    memory.add(
+                        "user",
+                        (
+                            "The task is not complete because a tool action failed. "
+                            "Recover now: inspect the current state with read_file when relevant, "
+                            "change the arguments, and retry the failed action. "
+                            "Do not merely explain the error."
+                        ),
+                    )
+                    console.activity("Исправление ошибки инструмента…")
+                    memory.trim(50)
+                    continue
+                console.agent_summary(guard.records, project_root)
+                console.error("Задача не завершена: исправить ошибку инструмента автоматически не удалось.")
+                return
+            console.response(response)
             changed_paths = [
                 record.detail
                 for record in guard.records
@@ -677,7 +697,14 @@ def run_agent(
                     if guard_error is not None
                     else tool_registry.execute(call)
                 )
-                guard.record(call, typed_result)
+                guard.record(
+                    call,
+                    typed_result,
+                    allow_same_retry=(
+                        guard_error is not None
+                        and guard_error.code == "READ_BEFORE_EDIT_REQUIRED"
+                    ),
+                )
                 if typed_result.status is ToolStatus.SUCCESS and name == "read_file":
                     inspected_paths.add(tool_path_key(project_root, arguments))
                 if typed_result.status is ToolStatus.SUCCESS and name in {

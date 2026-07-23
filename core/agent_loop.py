@@ -79,7 +79,13 @@ class AgentLoopGuard:
             )
         return None
 
-    def record(self, call: ToolCall, result: ToolResult) -> None:
+    def record(
+        self,
+        call: ToolCall,
+        result: ToolResult,
+        *,
+        allow_same_retry: bool = False,
+    ) -> None:
         self.records.append(
             ToolRunRecord(
                 name=call.name,
@@ -91,14 +97,15 @@ class AgentLoopGuard:
             self.consecutive_errors = 0
         else:
             self.consecutive_errors += 1
-            self._failed_calls.add(
-                json.dumps(
-                    {"name": call.name, "arguments": call.arguments},
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
+            if not allow_same_retry:
+                self._failed_calls.add(
+                    json.dumps(
+                        {"name": call.name, "arguments": call.arguments},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
                 )
-            )
 
     def record_invalid_call(self, name: str) -> None:
         self.records.append(ToolRunRecord(name=name or "unknown", status=ToolStatus.ERROR, detail=""))
@@ -168,6 +175,14 @@ def require_read_before_edit(
     )
 
 
+def unresolved_tool_failures(records: list[ToolRunRecord]) -> list[ToolRunRecord]:
+    """Return failed actions that have not later succeeded with the same target."""
+    latest: dict[tuple[str, str], ToolRunRecord] = {}
+    for record in records:
+        latest[(record.name, record.detail)] = record
+    return [record for record in latest.values() if record.status is ToolStatus.ERROR]
+
+
 def _call_detail(arguments: dict[str, Any]) -> str:
     if arguments.get("path") is not None:
         return str(arguments["path"] or ".")
@@ -185,4 +200,5 @@ __all__ = [
     "recovery_advice",
     "require_read_before_edit",
     "tool_path_key",
+    "unresolved_tool_failures",
 ]
