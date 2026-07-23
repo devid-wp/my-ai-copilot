@@ -31,7 +31,7 @@ from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompt_cache import PromptCache
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
-from core.provider_catalog import nvidia_models, select_nvidia_model
+from core.provider_catalog import recommended_nvidia_models, select_nvidia_model
 from core.provider_runtime import explain_provider_error, provider_name
 from core.rate_limits import rate_limit_monitor
 from core.tool_protocol import normalize_tool_call
@@ -96,7 +96,7 @@ def env(name: str, default: str) -> str:
 def provider_models(provider: str) -> list[str]:
     """Return configured cloud models or models installed in local Ollama."""
     if provider == "nvidia":
-        return nvidia_models(os.getenv("NVIDIA_API_KEY", ""))
+        return recommended_nvidia_models(os.getenv("NVIDIA_API_KEY", ""))
     if provider != "ollama":
         return PROVIDER_MODELS[provider]
 
