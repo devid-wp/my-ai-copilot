@@ -108,8 +108,14 @@ def test_agent_setup_reprompts_after_incompatible_ollama_model(monkeypatch):
 
 
 def test_agent_setup_remembers_automatic_permissions(monkeypatch):
+    from core.tool_compatibility import ToolCompatibility
+
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-saved")
     monkeypatch.setattr("main.provider_models", lambda _provider: ["meta/llama-3.1-8b-instruct"])
+    monkeypatch.setattr(
+        "main.probe_cloud_tool_support",
+        lambda *_args: ToolCompatibility.SUPPORTED,
+    )
     saved_preferences = []
     monkeypatch.setattr("main.save_preferences", saved_preferences.append)
     console = WizardConsole(
