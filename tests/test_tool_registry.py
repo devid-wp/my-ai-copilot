@@ -168,6 +168,7 @@ def test_builtin_registry_contains_every_runtime_tool(tmp_path):
 
     assert {definition.name for definition in registry.definitions()} == {
         "create_file",
+        "write_file",
         "edit_file",
         "delete_file",
         "make_directory",

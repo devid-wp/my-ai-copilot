@@ -74,6 +74,7 @@ def test_write_file_replaces_complete_content_and_can_be_undone(tmp_project):
         "write_file",
         {"path": "page.html", "content": "<h1>New</h1>\n"},
         tmp_project,
+        approve=lambda _action, _detail: True,
     )
 
     assert result["status"] == "updated"
