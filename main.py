@@ -120,6 +120,17 @@ def provider_models(provider: str) -> list[str]:
     return models
 
 
+def validate_provider_model(provider: str, model: str) -> list[str]:
+    """Reject model IDs that are unavailable through the active provider."""
+    models = provider_models(provider)
+    if model not in models:
+        raise ValueError(
+            f"Модель '{model}' недоступна для провайдера {provider.upper()}. "
+            "Используйте /model без аргумента, чтобы увидеть доступные модели."
+        )
+    return models
+
+
 def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bool:
     model = settings.display_model
     console.activity(f"Проверка native tools: {model}")
@@ -467,6 +478,11 @@ def handle_slash(
     if command == "model":
         if value:
             model = value
+            try:
+                validate_provider_model(settings.provider, model)
+            except (RuntimeError, ValueError) as exc:
+                console.error(str(exc))
+                return client, False
         else:
             try:
                 models = provider_models(settings.provider)

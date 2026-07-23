@@ -72,6 +72,25 @@ def test_ollama_model_menu_uses_installed_models(monkeypatch):
     assert client is None
 
 
+def test_model_command_rejects_model_from_another_provider(monkeypatch):
+    monkeypatch.setattr("main.provider_models", lambda _provider: ["gemini-2.0-flash"])
+    settings = SessionSettings(provider="gemini", model="gemini-2.0-flash")
+    console = FakeConsole()
+    current_client = object()
+
+    client, _ = handle_slash(
+        ("model", "meta/llama-3.1-8b-instruct"),
+        settings,
+        console,
+        FakeSession(),
+        current_client,
+    )
+
+    assert settings.model == "gemini-2.0-flash"
+    assert client is current_client
+    assert any(level == "error" and "недоступна" in message for level, message in console.messages)
+
+
 def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     saved: list[tuple[str, str]] = []
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
