@@ -23,11 +23,19 @@ def test_nvidia_models_come_from_api_and_are_cached(monkeypatch):
                 ]
             )
 
-    monkeypatch.setattr("core.provider_catalog.OpenAI", lambda **_kwargs: SimpleNamespace(models=Models()))
+    captured = {}
+
+    def fake_openai(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(models=Models())
+
+    monkeypatch.setattr("core.provider_catalog.OpenAI", fake_openai)
     clear_model_cache()
     assert nvidia_models("nvapi-test") == ["custom/instruct"]
     assert nvidia_models("nvapi-test") == ["custom/instruct"]
     assert calls == [1]
+    assert captured["max_retries"] == 0
+    assert captured["timeout"].read == 15
     assert select_nvidia_model("nvapi-test") == "custom/instruct"
     clear_model_cache()
 

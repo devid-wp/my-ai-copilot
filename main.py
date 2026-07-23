@@ -18,6 +18,7 @@ from core.agent_executor import create_tool_registry, tool_result_payload
 from core.agent_loop import AgentLoopGuard, pseudo_tool_name, recovery_advice
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
+from core.credential_probe import probe_provider_key
 from core.credentials import (
     PROVIDER_API_KEYS,
     credential_status,
@@ -377,8 +378,10 @@ def handle_slash(
                 )
                 return client, False
             try:
-                probe = create_client(provider, None, "Reply with OK.")
-                list(probe.ask_stream("Reply with OK."))
+                environment_name = PROVIDER_API_KEYS[provider]
+                console.activity(f"Проверка ключа {provider.upper()}…")
+                started = perf_counter()
+                probe_provider_key(provider, os.getenv(environment_name, ""))
             except Exception as exc:
                 snapshot = rate_limit_monitor.record_error(provider, exc)
                 if snapshot.limited:
@@ -387,10 +390,16 @@ def handle_slash(
                         "для новой проверки через 60 секунд."
                     )
                 else:
-                    console.error(f"Проверка ключа не пройдена: {exc}")
+                    console.error(
+                        "Проверка ключа не пройдена: "
+                        + explain_provider_error(exc, provider.upper())
+                    )
             else:
                 rate_limit_monitor.record_success(provider)
-                console.success(f"Ключ {provider.upper()} работает")
+                console.success(
+                    f"Ключ {provider.upper()} работает · проверено за "
+                    f"{perf_counter() - started:.1f} с"
+                )
         return client, False
     if command == "undo":
         try:

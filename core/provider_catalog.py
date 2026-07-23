@@ -8,6 +8,8 @@ from time import monotonic
 
 from openai import OpenAI
 
+from core.provider_runtime import fast_probe_timeout
+
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL_FALLBACKS = (
     "meta/llama-3.1-8b-instruct",
@@ -109,7 +111,12 @@ def nvidia_models(api_key: str, *, refresh: bool = False) -> list[str]:
         and now - _nvidia_cache[0] < MODEL_CACHE_SECONDS
     ):
         return list(_nvidia_cache[2])
-    response = OpenAI(api_key=api_key, base_url=NVIDIA_BASE_URL).models.list()
+    response = OpenAI(
+        api_key=api_key,
+        base_url=NVIDIA_BASE_URL,
+        timeout=fast_probe_timeout(),
+        max_retries=0,
+    ).models.list()
     discovered = {str(item.id) for item in response.data if getattr(item, "id", None)}
     models = tuple(sorted((model for model in discovered if is_nvidia_chat_model(model)), key=_model_rank))
     if not models:

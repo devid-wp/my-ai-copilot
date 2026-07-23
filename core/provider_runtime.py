@@ -10,6 +10,7 @@ import httpx
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10.0
 DEFAULT_FIRST_TOKEN_TIMEOUT_SECONDS = 45.0
 DEFAULT_MAX_RETRIES = 1
+FAST_PROBE_TIMEOUT_SECONDS = 15.0
 
 
 def _positive_float(name: str, default: float) -> float:
@@ -27,6 +28,16 @@ def provider_timeout() -> httpx.Timeout:
         "CITADEX_FIRST_TOKEN_TIMEOUT", DEFAULT_FIRST_TOKEN_TIMEOUT_SECONDS
     )
     return httpx.Timeout(first_token, connect=connect)
+
+
+def fast_probe_timeout() -> httpx.Timeout:
+    """Short fail-fast timeout for credential checks and model discovery."""
+    connect = min(
+        _positive_float("CITADEX_CONNECT_TIMEOUT", DEFAULT_CONNECT_TIMEOUT_SECONDS),
+        5.0,
+    )
+    total = _positive_float("CITADEX_PROBE_TIMEOUT", FAST_PROBE_TIMEOUT_SECONDS)
+    return httpx.Timeout(total, connect=connect)
 
 
 def provider_max_retries() -> int:
@@ -64,6 +75,7 @@ def explain_provider_error(exc: Exception, provider: str) -> str:
 
 __all__ = [
     "explain_provider_error",
+    "fast_probe_timeout",
     "provider_max_retries",
     "provider_name",
     "provider_timeout",
