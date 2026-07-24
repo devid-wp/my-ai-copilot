@@ -65,6 +65,21 @@ def test_pseudo_tool_call_is_detected_but_regular_json_is_not():
     )
     assert pseudo_tool_name('{"status":"ok"}') is None
     assert pseudo_tool_name("Use create_file to continue") is None
+    assert (
+        pseudo_tool_name(
+            'Конечно, создаю файл.\n```json\n'
+            '{"name":"create_file","arguments":{"path":"a.txt","content":"ok"}}\n'
+            "```"
+        )
+        == "create_file"
+    )
+    assert (
+        pseudo_tool_name(
+            '```json\n{"name":"read_file","arguments":{"path":"a.txt"}}\n```\n'
+            '```json\n{"name":"read_file","arguments":{"path":"b.txt"}}\n```'
+        )
+        is None
+    )
 
 
 def test_guard_does_not_repeat_an_identical_failed_call():

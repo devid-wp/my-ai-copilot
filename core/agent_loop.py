@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
@@ -132,19 +133,28 @@ def recovery_advice(code: str, project_root: str) -> str:
 def parse_pseudo_tool_call(response: str) -> dict[str, Any] | None:
     """Parse the strict JSON tool-call fallback used by small local models."""
     text = response.strip()
-    if text.startswith("```") and text.endswith("```"):
-        text = text[3:-3].strip()
-        if text.casefold().startswith("json"):
-            text = text[4:].lstrip()
-    try:
-        payload = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(payload, dict) or set(payload) != {"name", "arguments"}:
-        return None
-    if not isinstance(payload.get("name"), str) or not isinstance(payload.get("arguments"), dict):
-        return None
-    return payload
+
+    def valid_payload(candidate: str) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(payload, dict) or set(payload) != {"name", "arguments"}:
+            return None
+        if not isinstance(payload.get("name"), str) or not isinstance(payload.get("arguments"), dict):
+            return None
+        return payload
+
+    direct = valid_payload(text)
+    if direct is not None:
+        return direct
+
+    fenced_payloads = [
+        payload
+        for block in re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+        if (payload := valid_payload(block)) is not None
+    ]
+    return fenced_payloads[0] if len(fenced_payloads) == 1 else None
 
 
 def pseudo_tool_name(response: str) -> str | None:
