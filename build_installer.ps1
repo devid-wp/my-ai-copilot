@@ -11,10 +11,6 @@ $ScriptPath = Join-Path $ProjectRoot "CitadexLocalSetup.iss"
 if (-not (Test-Path -LiteralPath (Join-Path $SourceBundle "Citadex-Local.exe"))) {
     throw "Portable Citadex bundle not found: $SourceBundle"
 }
-if (-not (Test-Path -LiteralPath (Join-Path $SourceBundle "models"))) {
-    throw "Bundled model directory not found: $SourceBundle\models"
-}
-
 if (-not $InnoCompiler) {
     $Candidates = @(
         "$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",
@@ -39,7 +35,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup failed with exit code $LASTEXITCODE."
 }
 
-$Installer = Get-ChildItem -LiteralPath $OutputRoot -Filter "Citadex-Local-Setup-*.exe" |
+$Installer = Get-ChildItem -LiteralPath $OutputRoot -Filter "Citadex-Local-Web-Setup-*.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 if (-not $Installer) {
@@ -53,4 +49,3 @@ Write-Host ""
 Write-Host "Citadex Local installer complete:"
 Write-Host "  Setup:   $($Installer.FullName)"
 Write-Host "  SHA-256: $Hash"
-

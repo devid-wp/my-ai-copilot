@@ -19,7 +19,7 @@ DefaultDirName={localappdata}\Citadex Local
 DefaultGroupName=Citadex Local
 UninstallDisplayIcon={app}\Citadex-Local.exe
 OutputDir={#SetupOutput}
-OutputBaseFilename=Citadex-Local-Setup-{#AppVersion}
+OutputBaseFilename=Citadex-Local-Web-Setup-{#AppVersion}
 SetupIconFile=assets\citadex.ico
 WizardStyle=modern dark polar includetitlebar hidebevels
 WizardSizePercent=125
@@ -55,7 +55,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Name: "startmenuicon"; Description: "Добавить в меню «Пуск»"; GroupDescription: "Ярлыки"; Flags: checkedonce
 
 [Files]
-Source: "{#SourceBundle}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceBundle}\*"; DestDir: "{app}"; Excludes: "models\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf?download=true"; DestDir: "{app}\models"; DestName: "qwen2.5-coder-3b-instruct-q4_k_m.gguf"; ExternalSize: 2104932800; Hash: "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7"; Flags: external download ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Citadex Local"; Filename: "{app}\Citadex-Local.exe"; WorkingDir: "{userdocs}"; Tasks: desktopicon
@@ -142,8 +143,8 @@ begin
   StorageLabel.Width := WizardForm.SelectDirPage.Width;
   StorageLabel.Height := ScaleY(48);
   StorageLabel.Caption :=
-    'Модель Qwen и движок будут установлены в выбранную папку.' + #13#10 +
-    'Нужно около 2.4 ГБ. Интернет и API-ключи после установки не требуются.';
+    'Модель Qwen будет скачана с официального Hugging Face в выбранную папку.' + #13#10 +
+    'Нужно около 2.4 ГБ. После установки интернет и API-ключи не требуются.';
   StorageLabel.Font.Name := 'Segoe UI';
   StorageLabel.Font.Size := 9;
   StorageLabel.Font.Color := $D9D5E3;
