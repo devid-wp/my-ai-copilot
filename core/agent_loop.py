@@ -129,8 +129,8 @@ def recovery_advice(code: str, project_root: str) -> str:
     return "Проверьте входные данные инструмента и повторите запрос с исправленными параметрами."
 
 
-def pseudo_tool_name(response: str) -> str | None:
-    """Detect a strict JSON pseudo-call without ever executing it."""
+def parse_pseudo_tool_call(response: str) -> dict[str, Any] | None:
+    """Parse the strict JSON tool-call fallback used by small local models."""
     text = response.strip()
     if text.startswith("```") and text.endswith("```"):
         text = text[3:-3].strip()
@@ -144,7 +144,13 @@ def pseudo_tool_name(response: str) -> str | None:
         return None
     if not isinstance(payload.get("name"), str) or not isinstance(payload.get("arguments"), dict):
         return None
-    return payload["name"]
+    return payload
+
+
+def pseudo_tool_name(response: str) -> str | None:
+    """Detect a strict JSON pseudo-call without ever executing it."""
+    payload = parse_pseudo_tool_call(response)
+    return payload["name"] if payload is not None else None
 
 
 def tool_path_key(project_root: str, arguments: dict[str, Any]) -> str:
@@ -197,6 +203,7 @@ __all__ = [
     "AgentLoopGuard",
     "ToolRunRecord",
     "pseudo_tool_name",
+    "parse_pseudo_tool_call",
     "recovery_advice",
     "require_read_before_edit",
     "tool_path_key",

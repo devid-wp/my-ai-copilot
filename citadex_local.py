@@ -13,7 +13,7 @@ from core.local_runtime import (
 from main import main as citadex_main
 
 
-def run() -> int:
+def run(argv: list[str] | None = None) -> int:
     print("\nCITADEX LOCAL · Qwen2.5-Coder 3B\n")
     print("Starting the built-in model. The first launch can take up to two minutes...")
     process = None
@@ -21,6 +21,7 @@ def run() -> int:
         process = start_local_server()
         return citadex_main(
             [
+                *(sys.argv[1:] if argv is None else argv),
                 "--project",
                 str(Path.cwd()),
                 "--provider",

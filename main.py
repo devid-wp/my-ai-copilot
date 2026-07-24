@@ -673,7 +673,11 @@ def run_agent(
             console.error(exhausted.message)
             return
         if prompt_dirty:
-            client.system_prompt = build_system_prompt(project_root, username, memory)
+            client.system_prompt = build_system_prompt(project_root, username, memory) + getattr(
+                client,
+                "system_prompt_suffix",
+                "",
+            )
             prompt_dirty = False
         if memory.history and memory.history[0].get("role") == "system":
             memory.history[0]["content"] = client.system_prompt

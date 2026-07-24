@@ -205,7 +205,8 @@ class Console:
 
     def hint(self, _message: str) -> None:
         hint = Text()
-        for index, command in enumerate(SLASH_COMMANDS[:5]):
+        commands = LOCAL_SLASH_COMMANDS[:5] if self.local_only else SLASH_COMMANDS[:5]
+        for index, command in enumerate(commands):
             if index:
                 hint.append("  ·  ", style=MUTED)
             hint.append(command, style=PURPLE)
