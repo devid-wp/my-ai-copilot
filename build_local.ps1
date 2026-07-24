@@ -10,7 +10,7 @@ $LlamaTag = "b10092"
 $LlamaArchive = "llama-$LlamaTag-bin-win-cpu-x64.zip"
 $LlamaUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaTag/$LlamaArchive"
 $ModelName = "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
-$ModelUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/$ModelName?download=true"
+$ModelUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/${ModelName}?download=true"
 $ModelSha256 = "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7"
 $RequiredBytes = 5GB
 
@@ -53,7 +53,10 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not (Test-Path -LiteralPath $RuntimeArchive)) {
     Write-Host "Downloading llama.cpp $LlamaTag..."
-    Invoke-WebRequest -Uri $LlamaUrl -OutFile $RuntimeArchive
+    & curl.exe --fail --location --retry 3 --output $RuntimeArchive $LlamaUrl
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to download llama.cpp (curl exit code $LASTEXITCODE)."
+    }
 }
 if (Test-Path -LiteralPath $RuntimeExtract) {
     Remove-Item -LiteralPath $RuntimeExtract -Recurse -Force
@@ -79,7 +82,10 @@ Invoke-WebRequest `
 
 if (-not (Test-Path -LiteralPath $CachedModel)) {
     Write-Host "Downloading Qwen2.5-Coder 3B Q4_K_M (about 2.1 GB)..."
-    Invoke-WebRequest -Uri $ModelUrl -OutFile $CachedModel
+    & curl.exe --fail --location --retry 5 --continue-at - --output $CachedModel $ModelUrl
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to download Qwen model (curl exit code $LASTEXITCODE)."
+    }
 }
 $ActualModelHash = (Get-FileHash -LiteralPath $CachedModel -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($ActualModelHash -ne $ModelSha256) {
