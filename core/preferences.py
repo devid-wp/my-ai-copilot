@@ -45,7 +45,7 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
     models = (
         {str(name): str(model) for name, model in raw_models.items()} if isinstance(raw_models, dict) else {}
     )
-    if provider not in {"nvidia", "gemini", "ollama"}:
+    if provider not in {"nvidia", "gemini", "ollama", "local"}:
         provider = "nvidia"
     if mode not in {"chat", "agent"}:
         mode = "chat"

@@ -36,6 +36,7 @@ from core.credentials import (
 )
 from core.diagnostics import SessionDiagnostics
 from core.doctor import collect_doctor_checks
+from core.local_runtime import LOCAL_MODEL_ID, local_server_online
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
@@ -53,6 +54,7 @@ PROVIDER_MODELS = {
     "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
     "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
     "ollama": ["llama3.2", "qwen2.5-coder"],
+    "local": [LOCAL_MODEL_ID],
 }
 
 
@@ -107,6 +109,10 @@ def provider_models(provider: str) -> list[str]:
     """Return configured cloud models or models installed in local Ollama."""
     if provider == "nvidia":
         return recommended_nvidia_models(os.getenv("NVIDIA_API_KEY", ""))
+    if provider == "local":
+        if not local_server_online():
+            raise RuntimeError("Встроенная локальная модель не запущена.")
+        return [LOCAL_MODEL_ID]
     if provider != "ollama":
         return PROVIDER_MODELS[provider]
 
@@ -136,7 +142,11 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
     model = settings.display_model
     console.activity(f"Проверка native tools: {model}")
     try:
-        if settings.provider == "ollama":
+        if settings.provider == "local":
+            from core.local_client import LocalClient
+
+            compatibility = LocalClient("", model=model).check_tool_support(model)
+        elif settings.provider == "ollama":
             from core.ollama_client import OllamaClient
 
             client = OllamaClient(
@@ -306,7 +316,13 @@ def session_diagnostics(
     tools_state = settings.tool_compatibility
     ollama_state = "unknown"
 
-    if settings.provider == "ollama":
+    if settings.provider == "local":
+        provider_state = "online" if local_server_online() else "offline"
+        model_state = "available" if provider_state == "online" else "unavailable"
+        tools_state = (
+            "not checked" if settings.tool_compatibility == "unknown" else settings.tool_compatibility
+        )
+    elif settings.provider == "ollama":
         try:
             models = provider_models("ollama")
         except RuntimeError:
@@ -590,6 +606,10 @@ def create_client(provider: str, model: str | None, system_prompt: str):
             model_code=model or env("OLLAMA_MODEL_CODE", "qwen2.5-coder"),
             base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
+    if provider == "local":
+        from core.local_client import LocalClient
+
+        return LocalClient(system_prompt, model=model or LOCAL_MODEL_ID)
     raise ValueError(f"Неизвестный провайдер: {provider}")
 
 
@@ -803,7 +823,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
     parser.add_argument("--version", action="version", version=f"%(prog)s {get_version()}")
     parser.add_argument("--project", "-p", default=None, help="Корень проекта")
-    parser.add_argument("--provider", choices=["nvidia", "gemini", "ollama"], default=None)
+    parser.add_argument("--provider", choices=["nvidia", "gemini", "ollama", "local"], default=None)
     parser.add_argument("--model", "-m", help="Одна модель для чата и кода")
     parser.add_argument("--agent", "-a", action="store_true", help="Разрешить агентные инструменты")
     parser.add_argument("--oneshot", "-o", metavar="PROMPT", help="Выполнить один запрос и выйти")
