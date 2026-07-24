@@ -29,6 +29,7 @@ def run() -> int:
                 LOCAL_MODEL_ID,
                 "--agent",
                 "--skip-setup",
+                "--local-only",
             ]
         )
     except (OSError, RuntimeError, TimeoutError) as exc:

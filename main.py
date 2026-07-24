@@ -66,6 +66,7 @@ class SessionSettings:
     auto_approve: bool = False
     tool_compatibility: str = "unknown"
     project_root: str = ""
+    local_only: bool = False
 
     @property
     def mode(self) -> str:
@@ -382,6 +383,9 @@ def handle_slash(
     client: Any | None,
 ) -> tuple[Any | None, bool]:
     command, value = parsed
+    if settings.local_only and command in {"keys", "provider", "model"}:
+        console.error(f"/{command} недоступна в полностью локальной версии Citadex.")
+        return client, False
     if command in {"exit", "quit"}:
         return client, True
     if command == "help":
@@ -840,12 +844,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Пропустить интерактивный мастер запуска",
     )
+    parser.add_argument("--local-only", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    console = Console()
+    console = Console(local_only=args.local_only)
     preferences = load_preferences()
     project_root = str(Path(args.project or os.getcwd()).resolve())
     if not Path(project_root).is_dir():
@@ -864,6 +869,7 @@ def main(argv: list[str] | None = None) -> int:
         args.yes or preferences.permissions == "auto",
     )
     settings.project_root = project_root
+    settings.local_only = args.local_only
     interactive_setup = not args.oneshot and not args.skip_setup
     if interactive_setup:
         try:
@@ -891,7 +897,10 @@ def main(argv: list[str] | None = None) -> int:
     client = None
     approved_external_paths: set[str] = set()
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
-    console.hint("/project · /provider · /model · /mode · /permissions · /help")
+    if args.local_only:
+        console.hint("/project · /mode · /permissions · /undo · /status · /help")
+    else:
+        console.hint("/project · /provider · /model · /mode · /permissions · /help")
     if settings.auto_approve:
         console.warning("Автоподтверждение включено: агент может изменять файлы и запускать команды.")
 

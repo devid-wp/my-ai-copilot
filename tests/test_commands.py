@@ -37,6 +37,30 @@ def test_parse_slash_command_and_value():
     assert parse_slash("ordinary prompt") is None
 
 
+def test_local_edition_blocks_cloud_configuration_commands():
+    console = FakeConsole()
+    settings = SessionSettings(
+        provider="local",
+        model="qwen2.5-coder-3b-instruct-q4_k_m",
+        local_only=True,
+    )
+
+    for command in ("keys", "provider", "model"):
+        client = object()
+        returned, should_exit = handle_slash(
+            (command, ""),
+            settings,
+            console,
+            FakeSession(),
+            client,
+        )
+        assert returned is client
+        assert should_exit is False
+
+    assert all(kind == "error" for kind, _message in console.messages)
+    assert all("локальной версии" in message for _kind, message in console.messages)
+
+
 def test_provider_command_resets_model_and_client(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "configured")
     settings = SessionSettings(provider="nvidia", model="custom")

@@ -65,16 +65,31 @@ SLASH_COMMANDS = [
     "/help",
     "/exit",
 ]
+LOCAL_SLASH_COMMANDS = [
+    "/mode",
+    "/project",
+    "/undo",
+    "/permissions",
+    "/status",
+    "/doctor",
+    "/clear",
+    "/help",
+    "/exit",
+]
 
 
 class Console:
-    def __init__(self) -> None:
+    def __init__(self, *, local_only: bool = False) -> None:
+        self.local_only = local_only
         self.output = RichConsole(highlight=False, soft_wrap=True)
         self.session: PromptSession[str] | None = None
         if sys.stdin.isatty() and sys.stdout.isatty():
             self.session = PromptSession(
                 multiline=False,
-                completer=WordCompleter(SLASH_COMMANDS, sentence=True),
+                completer=WordCompleter(
+                    LOCAL_SLASH_COMMANDS if local_only else SLASH_COMMANDS,
+                    sentence=True,
+                ),
                 complete_while_typing=True,
                 style=Style.from_dict(
                     {
@@ -417,10 +432,7 @@ class Console:
         commands.add_column(style="white")
         rows = [
             ("/project <path>", "сменить рабочую папку"),
-            ("/keys", "управлять API-ключами (значения скрыты)"),
             ("/undo", "отменить последнее изменение файла"),
-            ("/provider [name]", "выбрать NVIDIA, Gemini или Ollama"),
-            ("/model [name]", "выбрать модель текущего провайдера"),
             ("/mode [chat|agent]", "переключить режим работы"),
             ("/permissions [ask|auto]", "настроить подтверждения действий"),
             ("/status", "показать настройки сессии"),
@@ -428,6 +440,12 @@ class Console:
             ("/clear", "очистить историю"),
             ("/exit", "выйти"),
         ]
+        if not self.local_only:
+            rows[1:1] = [
+                ("/keys", "управлять API-ключами (значения скрыты)"),
+                ("/provider [name]", "выбрать NVIDIA, Gemini или Ollama"),
+                ("/model [name]", "выбрать модель текущего провайдера"),
+            ]
         for command, description in rows:
             commands.add_row(command, description)
         footer = Text("Команды без аргумента открывают меню  ·  TAB дополняет команды", style=MUTED)
