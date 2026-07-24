@@ -1,5 +1,5 @@
 #define AppName "Citadex Local"
-#define AppVersion "0.2.0"
+#define AppVersion "0.2.1"
 
 #ifndef SourceBundle
   #error SourceBundle must point to the prepared Citadex Local portable folder
@@ -44,7 +44,7 @@ DiskSpanning=no
 Uninstallable=yes
 VersionInfoVersion={#AppVersion}.0
 VersionInfoProductName={#AppName}
-VersionInfoDescription=Offline AI coding agent powered by Qwen2.5-Coder 3B
+VersionInfoDescription=Offline AI coding agent powered by Qwen2.5-Coder 1.5B
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -56,11 +56,16 @@ Name: "startmenuicon"; Description: "Добавить в меню «Пуск»";
 
 [Files]
 Source: "{#SourceBundle}\*"; DestDir: "{app}"; Excludes: "models\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf?download=true"; DestDir: "{app}\models"; DestName: "qwen2.5-coder-3b-instruct-q4_k_m.gguf"; ExternalSize: 2104932800; Hash: "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7"; Flags: external download ignoreversion
+Source: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf?download=true"; DestDir: "{app}\models"; DestName: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"; ExternalSize: 1120000000; Hash: "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"; Flags: external download ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Citadex Local"; Filename: "{app}\Citadex-Local.exe"; WorkingDir: "{userdocs}"; Tasks: desktopicon
 Name: "{autoprograms}\Citadex Local"; Filename: "{app}\Citadex-Local.exe"; WorkingDir: "{userdocs}"; Tasks: startmenuicon
+Name: "{autoprograms}\Удалить Citadex Local"; Filename: "{uninstallexe}"; Tasks: startmenuicon
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\models"
+Type: filesandordirs; Name: "{app}\runtime"
 
 [Run]
 Filename: "{app}\Citadex-Local.exe"; Description: "Запустить Citadex Local"; WorkingDir: "{userdocs}"; Flags: nowait postinstall skipifsilent
@@ -71,6 +76,70 @@ var
   SubtitleLabel: TNewStaticText;
   StepLabel: TNewStaticText;
   StorageLabel: TNewStaticText;
+
+function FindInstalledUninstaller(var Uninstaller: String): Boolean;
+var
+  UninstallKey: String;
+begin
+  UninstallKey :=
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+    '{D81A26E5-3EA5-49E8-AB62-32CC7872218A}_is1';
+  Result :=
+    RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', Uninstaller) or
+    RegQueryStringValue(HKLM64, UninstallKey, 'UninstallString', Uninstaller);
+end;
+
+function RunExistingUninstaller(const Uninstaller: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(
+    RemoveQuotes(Uninstaller),
+    '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  ) and (ResultCode = 0);
+end;
+
+function InitializeSetup: Boolean;
+var
+  Uninstaller: String;
+  Choice: Integer;
+begin
+  Result := True;
+  if not FindInstalledUninstaller(Uninstaller) then
+    exit;
+
+  Choice := MsgBox(
+    'Citadex Local уже установлен.' + #13#10 + #13#10 +
+    'Да — полностью удалить старую версию и переустановить.' + #13#10 +
+    'Нет — только удалить Citadex Local и модель.' + #13#10 +
+    'Отмена — ничего не менять.',
+    mbConfirmation,
+    MB_YESNOCANCEL
+  );
+
+  if Choice = IDCANCEL then
+  begin
+    Result := False;
+    exit;
+  end;
+
+  if not RunExistingUninstaller(Uninstaller) then
+  begin
+    MsgBox(
+      'Не удалось удалить предыдущую установку Citadex Local.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  Result := Choice = IDYES;
+end;
 
 procedure UpdateStep;
 var
@@ -114,7 +183,7 @@ begin
   SubtitleLabel.Left := ScaleX(28);
   SubtitleLabel.Top := ScaleY(49);
   SubtitleLabel.Width := ScaleX(260);
-  SubtitleLabel.Caption := 'QWEN2.5-CODER 3B  •  PRIVATE  •  OFFLINE';
+  SubtitleLabel.Caption := 'QWEN2.5-CODER 1.5B  •  PRIVATE  •  OFFLINE';
   SubtitleLabel.Font.Name := 'Segoe UI';
   SubtitleLabel.Font.Size := 8;
   SubtitleLabel.Font.Color := $EED322;
