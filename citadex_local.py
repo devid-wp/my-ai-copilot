@@ -14,7 +14,7 @@ from main import main as citadex_main
 
 
 def run(argv: list[str] | None = None) -> int:
-    print("\nCITADEX LOCAL · Qwen2.5-Coder 3B\n")
+    print("\nCITADEX LOCAL · Qwen2.5-Coder 1.5B\n")
     print("Starting the built-in model. The first launch can take up to two minutes...")
     process = None
     try:

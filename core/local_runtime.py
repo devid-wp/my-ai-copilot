@@ -11,8 +11,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-LOCAL_MODEL_ID = "qwen2.5-coder-3b-instruct-q4_k_m"
-LOCAL_MODEL_FILENAME = "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+LOCAL_MODEL_ID = "qwen2.5-coder-1.5b-instruct-q4_k_m"
+LOCAL_MODEL_FILENAME = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
 LOCAL_PORT = 11435
 LOCAL_BASE_URL = f"http://127.0.0.1:{LOCAL_PORT}"
 
@@ -68,6 +68,10 @@ def start_local_server(
             str(LOCAL_PORT),
             "--ctx-size",
             "8192",
+            "--threads",
+            "2",
+            "--threads-batch",
+            "2",
             "--jinja",
         ],
         cwd=str(executable.parent),

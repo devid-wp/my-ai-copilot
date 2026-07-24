@@ -4,7 +4,7 @@
 
 ### Добавлено
 
-- Portable Windows-сборка с Qwen2.5-Coder 3B Instruct `Q4_K_M`.
+- Portable Windows-сборка с Qwen2.5-Coder 1.5B Instruct `Q4_K_M`.
 - Встроенный CPU x64 runtime llama.cpp без зависимости от Ollama или Python.
 - Автоматический запуск и завершение локального сервера вместе с Citadex.
 - Отдельный провайдер `local` с тем же tool protocol, что NVIDIA, Gemini и Ollama.

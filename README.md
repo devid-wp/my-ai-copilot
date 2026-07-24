@@ -53,14 +53,14 @@ cp .env.example .env
 
 ## Запуск
 
-### Citadex Local с Qwen2.5-Coder 3B
+### Citadex Local с Qwen2.5-Coder 1.5B
 
 `build_local.bat` создаёт отдельную portable-сборку, которая работает без API,
 установленного Python и Ollama. В комплект входят:
 
 - `Citadex-Local.exe`;
 - CPU x64 runtime llama.cpp;
-- официальная модель `Qwen2.5-Coder-3B-Instruct-GGUF` в квантизации `Q4_K_M`;
+- официальная модель `Qwen2.5-Coder-1.5B-Instruct-GGUF` в квантизации `Q4_K_M`;
 - лицензии Citadex, llama.cpp и Qwen.
 
 Сборке требуется около 5 ГБ свободного места. Скрипт автоматически выбирает

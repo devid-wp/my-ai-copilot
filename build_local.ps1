@@ -4,14 +4,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Version = "0.2.0"
+$Version = "0.2.1"
 $BundleName = "Citadex-Local-$Version-windows-x64"
 $LlamaTag = "b10092"
 $LlamaArchive = "llama-$LlamaTag-bin-win-cpu-x64.zip"
 $LlamaUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaTag/$LlamaArchive"
-$ModelName = "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
-$ModelUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/${ModelName}?download=true"
-$ModelSha256 = "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7"
+$ModelName = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+$ModelUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/${ModelName}?download=true"
+$ModelSha256 = "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"
 $RequiredBytes = 5GB
 
 if (-not $OutputRoot) {
@@ -81,7 +81,7 @@ Invoke-WebRequest `
     -OutFile (Join-Path $Bundle "LLAMA-CPP-LICENSE.txt")
 
 if (-not (Test-Path -LiteralPath $CachedModel)) {
-    Write-Host "Downloading Qwen2.5-Coder 3B Q4_K_M (about 2.1 GB)..."
+    Write-Host "Downloading Qwen2.5-Coder 1.5B Q4_K_M (about 1.1 GB)..."
     & curl.exe --fail --location --retry 5 --continue-at - --output $CachedModel $ModelUrl
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to download Qwen model (curl exit code $LASTEXITCODE)."
@@ -95,7 +95,7 @@ Copy-Item -LiteralPath $CachedModel -Destination $ModelPath
 
 $ModelLicense = Join-Path $Bundle "QWEN-LICENSE.txt"
 Invoke-WebRequest `
-    -Uri "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/LICENSE" `
+    -Uri "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/LICENSE" `
     -OutFile $ModelLicense
 
 $Archive = Join-Path $OutputRoot "$BundleName.zip"

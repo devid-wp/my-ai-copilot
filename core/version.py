@@ -9,7 +9,7 @@ def get_version() -> str:
     try:
         return version("citadex")
     except PackageNotFoundError:
-        return "0.2.0"
+        return "0.2.1"
 
 
 __version__ = get_version()

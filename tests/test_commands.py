@@ -41,7 +41,7 @@ def test_local_edition_blocks_cloud_configuration_commands():
     console = FakeConsole()
     settings = SessionSettings(
         provider="local",
-        model="qwen2.5-coder-3b-instruct-q4_k_m",
+        model="qwen2.5-coder-1.5b-instruct-q4_k_m",
         local_only=True,
     )
 
