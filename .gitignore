@@ -4,15 +4,18 @@
 !.env.example
 .citadex/
 
-# Python environments and bytecode
+# Python
 .venv/
 venv/
 env/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg
+*.egg-info/
+*.whl
 
-# Test, type-check and lint caches
+# Test and analysis output
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -23,17 +26,31 @@ __pycache__/
 coverage.xml
 htmlcov/
 
-# Packaging and build output
+# Build and release artifacts
 build/
 dist/
-*.egg-info/
-*.egg
-*.whl
+dist-local/
+downloads/
+installer/
+*.exe
+*.gguf
+*.zip
+*.sha256
 
-# Runtime output
+# Citadex runtime output
 logs/
 *.log
 history.log
+*.bak
+*.tmp
+*.temp
+
+# Local agent and orchestration tooling
+.agents/
+.codex/
+.omx/
+oh-my-codex/
+AGENTS.md
 
 # Editors and operating systems
 .idea/
@@ -41,10 +58,5 @@ history.log
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
 *.swp
 *~
