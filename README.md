@@ -1,194 +1,54 @@
 # Citadex
 
-![Citadex icon](assets/citadex-icon.png)
+Citadex is a safety-focused terminal coding agent for Windows and Python projects. It can inspect a workspace, edit files, run commands and tests, preview changes, and undo the latest file operation.
 
-Citadex —  CLI AI-ассистент для работы с локальными проектами. Он умеет отвечать в режиме чата и, при явном включении агентного режима, читать и изменять файлы или запускать ограниченный набор команд.
+## Editions
 
-## Возможности
+- **Citadex Local** — an offline agent powered by Qwen2.5-Coder 1.5B Q4_K_M.
+- **Citadex API** — supports NVIDIA, Gemini, and Ollama-compatible endpoints.
 
-- NVIDIA NIM, Google Gemini и локальный Ollama.
-- Потоковый вывод в терминал.
-- Автоматический выбор chat/code модели.
-- Контекст структуры проекта и Git.
-- Native tool calls без текстовых псевдокоманд.
-- Проверка native tools выбранной модели перед включением agent-режима.
-- Защита корня проекта, `.git` и `.env`.
-- Подтверждение каждого изменения и запуска команды.
-- Сохранение истории сессии в `logs/session.json`.
+## Installation
 
-## Установка
+Windows users can download the lightweight installer from the latest release. The installer downloads and verifies the local model during setup.
 
-Требуется Python 3.10–3.13.
-
-```bash
-python -m venv .venv
-```
-
-Windows:
+To install the Python package from source:
 
 ```powershell
-.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
+python -m pip install .
+citadex
 ```
 
-Linux/macOS:
+See the [installation guide](docs/INSTALLATION.md) for all available options.
 
-```bash
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-cp .env.example .env
-```
-
-Добавьте ключ выбранного провайдера в `.env` или выберите провайдера через `/provider`: Citadex
-предложит безопасный скрытый ввод и сохранит ключ в пользовательской конфигурации. На Windows это
-`%APPDATA%\Citadex\.env`. Для Ollama API-ключ не требуется. Модели Ollama с поддержкой `tools`
-можно использовать в `/mode agent` так же, как облачные модели.
-Команда `/model` для Ollama показывает модели, реально установленные на локальном сервере.
-Для NVIDIA меню показывает компактный список рекомендованных текстовых моделей. Любую другую
-доступную модель можно указать напрямую: `/model provider/model-id`.
-
-При повторном выборе облачного провайдера нажмите `Enter`, чтобы оставить сохранённый ключ, или
-введите новый ключ для его замены. NVIDIA API-ключ должен начинаться с `nvapi-`.
-
-## Запуск
-
-### Citadex Local с Qwen2.5-Coder 1.5B
-
-`build_local.bat` создаёт отдельную portable-сборку, которая работает без API,
-установленного Python и Ollama. В комплект входят:
-
-- `Citadex-Local.exe`;
-- CPU x64 runtime llama.cpp;
-- официальная модель `Qwen2.5-Coder-1.5B-Instruct-GGUF` в квантизации `Q4_K_M`;
-- лицензии Citadex, llama.cpp и Qwen.
-
-Сборке требуется около 5 ГБ свободного места. Скрипт автоматически выбирает
-диск с достаточным свободным местом и проверяет SHA-256 модели перед упаковкой.
+## Essential commands
 
 ```text
-build_local.bat
+/mode          Switch between chat and agent mode
+/permissions   Configure tool approval
+/project       Change the active workspace
+/status        Show runtime diagnostics
+/undo          Restore the latest changed file
+/doctor        Check the environment
+/help          Show all commands
 ```
 
-После распаковки пользователь запускает `Citadex-Local.exe`. Локальный сервер
-стартует автоматически и закрывается вместе с Citadex. API-провайдеры NVIDIA
-и Gemini остаются доступны через обычный `Citadex.exe`.
+API builds also provide `/provider`, `/model`, and `/keys`.
 
-### Windows EXE
+## Safety
 
-Готовая сборка запускается без установленного Python:
+Citadex restricts file tools to the selected workspace unless the user explicitly grants access. Agent mode limits tool calls, prevents identical failed retries, previews edits, creates undo backups, and verifies modified files before reporting completion.
 
-```text
-dist\Citadex.exe
-```
+Automatic approval removes an important safety boundary. Enable it only inside a trusted workspace.
 
-Для самостоятельной сборки сначала запустите `setup.bat`, затем `build_exe.bat`.
-Готовый файл появится в `dist\Citadex.exe`. Команда `run_citadex.bat` автоматически
-запускает EXE или установленную Python-версию.
+## Documentation
 
-Инструкция для публикации готового архива и проверки SHA-256 находится в
-[`RELEASE.md`](RELEASE.md).
+- [Installation](docs/INSTALLATION.md)
+- [Local runtime](docs/LOCAL_RUNTIME.md)
+- [Development](docs/DEVELOPMENT.md)
+- [Releasing](docs/RELEASING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
-Обычный чат:
+## License
 
-```bash
-citadex --provider nvidia --project .
-```
-
-Для обычной работы достаточно запустить `citadex` без флагов. Стартовый мастер предложит режим,
-провайдера и модель. API-ключ запрашивается только один раз и сохраняется локально; последние варианты
-становятся значениями по умолчанию, которые можно принять клавишей `Enter`.
-Для agent-режима мастер также предложит спрашивать разрешение перед действиями или включить
-автоподтверждение с полным доступом внутри выбранной рабочей папки.
-
-Настройки также меняются прямо внутри сессии:
-
-```text
-/provider        интерактивно выбрать провайдера
-/project PATH    сменить рабочую папку без перезапуска Citadex
-/model           выбрать модель
-/mode            переключить chat/agent
-/permissions     выбрать ask/auto
-/status          проверить провайдера, модель, tools и состояние сессии
-/doctor          проверить Python, проект, Git, API-ключ, модель и Ollama
-/clear           очистить историю
-/help            показать все команды
-```
-
-Для автоматизации или запуска только по флагам используйте `citadex --skip-setup`.
-
-Команды `/provider`, `/model`, `/mode` и `/permissions` можно использовать без аргументов — появится нумерованное меню. Например, `/provider gemini` переключает провайдера сразу.
-
-Агентный режим:
-
-```bash
-citadex --agent --project .
-```
-
-Одна задача:
-
-```bash
-citadex --agent --oneshot "проверь тесты и исправь ошибку" --project .
-```
-
-По умолчанию каждое изменение и каждая команда требуют подтверждения. `--yes` отключает подтверждения и должен использоваться только в доверенной автоматизации.
-
-Полезные флаги:
-
-```text
---provider nvidia|gemini|ollama
---model MODEL
---agent
---oneshot PROMPT
---project PATH
---max-steps N
---version
---yes
-```
-
-Флаги сохранены для скриптов, CI и oneshot-автоматизации; интерактивная работа в них не нуждается.
-
-Бесплатные API-тарифы могут ограничивать количество запросов и скорость ответа. Citadex ограничивает
-ожидание первого токена, распознаёт timeout и rate limit, а `/keys` проверяет ключ одним коротким
-запросом без загрузки всего каталога моделей.
-
-## Безопасность и приватность
-
-Все инструменты проходят единую проверку `ToolRisk` перед выполнением. Операции чтения разрешаются
-без диалога, а запись, удаление и команды в режиме `ask` требуют подтверждения. Режим `auto`
-разрешает рискованные действия для текущей сессии, не отключая защиту корня проекта и allowlist команд.
-
-Облачные провайдеры получают выбранный контекст исходного кода. Не используйте их для закрытых проектов без разрешения владельца данных. Citadex исключает `.env`, но автоматическая фильтрация не заменяет проверку пользователя.
-
-Командный runner не использует shell, запрещает chaining, redirects и inline interpreter code. Это снижает риск, но агент всё равно способен менять проект — внимательно читайте approval prompt.
-
-Уязвимости сообщайте по инструкции в [SECURITY.md](SECURITY.md).
-
-## Разработка
-
-```bash
-python -m pytest -q
-python -m ruff check .
-python -m mypy core main.py
-python -m build
-```
-
-Живая проверка native tool calling запускается вручную и использует безопасную временную папку:
-
-```bash
-citadex-tool-smoke --provider nvidia --model meta/llama-3.1-8b-instruct
-citadex-tool-smoke --provider gemini --model gemini-2.0-flash
-```
-
-Тест требует настоящий API-ключ и последовательно проверяет `create_file`, `read_file` и
-`delete_file`. В обычный запуск `pytest` сетевые запросы не входят.
-
-Текущую установленную версию можно проверить командой:
-
-```bash
-citadex --version
-```
-
-## Лицензия
-
-MIT — см. [LICENSE](LICENSE).
+Citadex is released under the [MIT License](LICENSE). Third-party components and downloaded models retain their respective licenses.
