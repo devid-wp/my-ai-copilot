@@ -49,4 +49,3 @@ GEMINI_API_KEY=...
 
 Keys can also be managed inside Citadex with `/keys`. Stored key values are
 never printed.
-

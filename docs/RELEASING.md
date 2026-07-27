@@ -19,4 +19,3 @@
 Windows SmartScreen may warn about unsigned binaries. Users should download
 artifacts only from the official release page and verify the published
 checksum.
-

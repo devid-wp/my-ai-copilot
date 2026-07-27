@@ -45,4 +45,3 @@ Create the lightweight web installer:
 
 The installer downloads the model from the official Qwen Hugging Face
 repository and verifies its pinned SHA-256 checksum.
-

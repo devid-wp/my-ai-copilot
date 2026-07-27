@@ -37,4 +37,3 @@ CitadexLocalSetup.iss  Windows web-installer definition
 
 Keep generated builds, virtual environments, credentials, caches, and model
 files out of Git.
-
