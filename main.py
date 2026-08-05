@@ -164,14 +164,41 @@ def choose_model(provider: str, console: Console, preferred: str | None = None) 
         suffix = f" (Enter = {preferred})" if preferred else ""
         model = console.input(f"Имя модели{suffix}").strip() or (preferred or "")
         validate_provider_model(provider, model)
-        if provider == "nvidia":
-            validate_provider_model_access(provider, model, os.getenv("NVIDIA_API_KEY", ""))
         return model
     models = provider_models(provider)
     return console.choose(
         "Модель",
         models,
         default=preferred if preferred in models else models[0],
+    )
+
+
+def resolve_cloud_model_provider(current_provider: str, model: str) -> str:
+    """Find which configured cloud provider exposes a manually entered model ID."""
+    candidates = [current_provider, *(name for name in PROVIDER_API_KEYS if name != current_provider)]
+    configured = [name for name in candidates if os.getenv(PROVIDER_API_KEYS[name], "").strip()]
+    failed: list[str] = []
+    for provider in configured:
+        try:
+            validate_provider_model_access(
+                provider,
+                model,
+                os.getenv(PROVIDER_API_KEYS[provider], ""),
+            )
+        except ValueError:
+            continue
+        except Exception:
+            failed.append(provider.upper())
+            continue
+        return provider
+    if failed and len(failed) == len(configured):
+        raise RuntimeError(
+            "Не удалось автоматически проверить модель через API: " + ", ".join(failed)
+        )
+    names = ", ".join(name.upper() for name in configured) or "настроенных API"
+    raise ValueError(
+        f"Модель '{model}' не найдена у провайдеров: {names}. "
+        "Проверьте точное имя модели или настройте нужный ключ через /keys."
     )
 
 
@@ -288,10 +315,18 @@ def run_startup_setup(
     if not configure_provider_key(provider, console, allow_replacement=False):
         return False
 
-    preferred_model = settings.model or preferences.models.get(provider)
+    preferred_model = preferences.models.get(provider)
+    if provider == settings.provider and settings.model:
+        preferred_model = settings.model
     while True:
         try:
             model = choose_model(provider, console, preferred_model)
+            if provider == "nvidia":
+                validate_provider_model_access(
+                    provider,
+                    model,
+                    os.getenv(PROVIDER_API_KEYS[provider], ""),
+                )
         except (RuntimeError, ValueError) as exc:
             console.error(str(exc))
             return False
@@ -535,6 +570,12 @@ def handle_slash(
             return client, False
         try:
             model = choose_model(provider, console)
+            if provider == "nvidia":
+                validate_provider_model_access(
+                    provider,
+                    model,
+                    os.getenv(PROVIDER_API_KEYS[provider], ""),
+                )
         except (RuntimeError, ValueError) as exc:
             console.error(str(exc))
             return client, False
@@ -549,23 +590,39 @@ def handle_slash(
     if command == "model":
         if value:
             model = value
-            try:
-                validate_provider_model(settings.provider, model)
-            except (RuntimeError, ValueError) as exc:
-                console.error(str(exc))
-                return client, False
         else:
             try:
                 model = choose_model(settings.provider, console, settings.model)
             except (RuntimeError, ValueError) as exc:
                 console.error(str(exc))
                 return client, False
+        previous_provider = settings.provider
+        try:
+            if settings.provider in PROVIDER_API_KEYS:
+                settings.provider = resolve_cloud_model_provider(settings.provider, model)
+            else:
+                validate_provider_model(settings.provider, model)
+        except (RuntimeError, ValueError) as exc:
+            settings.provider = previous_provider
+            console.error(str(exc))
+            return client, False
         settings.model = model
+        if settings.provider != previous_provider:
+            preferences = load_preferences()
+            preferences.provider = settings.provider
+            preferences.models[settings.provider] = model
+            with suppress(OSError):
+                save_preferences(preferences)
         settings.tool_compatibility = "unknown"
         if settings.agent and not verify_tool_compatibility(settings, console):
             settings.agent = False
             console.warning("Режим переключён на chat.")
-        console.success(f"Модель: {model}")
+        if settings.provider != previous_provider:
+            console.success(
+                f"Провайдер автоматически изменён: {settings.provider} · Модель: {model}"
+            )
+        else:
+            console.success(f"Модель: {model}")
         return None, False
     if command == "mode":
         mode = value.casefold() if value else console.choose("Режим", ["chat", "agent"])

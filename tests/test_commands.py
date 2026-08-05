@@ -118,6 +118,36 @@ def test_model_command_rejects_model_from_another_provider(monkeypatch):
     assert any(level == "error" and "недоступна" in message for level, message in console.messages)
 
 
+def test_model_command_automatically_switches_cloud_provider(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key")
+
+    def validate(provider, model, _key):
+        if (provider, model) != ("nvidia", "google/diffusiongemma-26b-a4b-it"):
+            raise ValueError("model unavailable")
+
+    monkeypatch.setattr("main.validate_provider_model_access", validate)
+    saved_preferences = []
+    monkeypatch.setattr("main.save_preferences", saved_preferences.append)
+    settings = SessionSettings(provider="openai", model="gpt-5-nano")
+    console = FakeConsole()
+
+    client, _ = handle_slash(
+        ("model", "google/diffusiongemma-26b-a4b-it"),
+        settings,
+        console,
+        FakeSession(),
+        object(),
+    )
+
+    assert client is None
+    assert settings.provider == "nvidia"
+    assert settings.model == "google/diffusiongemma-26b-a4b-it"
+    assert saved_preferences[0].provider == "nvidia"
+    assert saved_preferences[0].models["nvidia"] == "google/diffusiongemma-26b-a4b-it"
+    assert any("автоматически" in message for _level, message in console.messages)
+
+
 def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     saved: list[tuple[str, str]] = []
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

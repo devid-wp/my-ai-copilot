@@ -78,6 +78,29 @@ def test_repeat_run_reuses_key_and_offers_saved_defaults(monkeypatch):
     assert console.defaults["Провайдер"] == "openai"
 
 
+def test_switching_provider_does_not_reuse_previous_provider_model(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setattr("main.save_preferences", lambda _preferences: None)
+    preferences = UserPreferences(
+        provider="nvidia",
+        mode="chat",
+        models={"nvidia": "z-ai/glm-5.2", "openai": "gpt-5-nano"},
+    )
+    console = WizardConsole(
+        {
+            "Режим запуска": "chat",
+            "Провайдер": "openai",
+            "Модель": "",
+        }
+    )
+    settings = SessionSettings(provider="nvidia", model="z-ai/glm-5.2")
+
+    assert run_startup_setup(settings, console, preferences) is True
+
+    assert settings.provider == "openai"
+    assert settings.model == "gpt-5-nano"
+
+
 def test_agent_setup_reprompts_after_incompatible_ollama_model(monkeypatch):
     compatibility = iter([False, True])
     chosen_models = iter(["weak-model", "good-model"])
