@@ -205,6 +205,20 @@ def test_ollama_allows_agent_mode(monkeypatch):
     assert settings.agent is True
 
 
+def test_mode_change_resets_client_to_rebuild_optimized_prompt():
+    settings = SessionSettings(provider="ollama", model="model")
+
+    client, _ = handle_slash(
+        ("mode", "chat"),
+        settings,
+        FakeConsole(),
+        FakeSession(),
+        object(),
+    )
+
+    assert client is None
+
+
 def test_ollama_rejects_agent_mode_when_model_is_incompatible(monkeypatch):
     monkeypatch.setattr("main.verify_tool_compatibility", lambda _settings, _console: False)
     settings = SessionSettings(provider="ollama", model="weak-model")

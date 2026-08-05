@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.llm_client import NVIDIAClient, OpenAIClient
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
+from main import build_client_system_prompt
 
 
 def test_system_prompt_template_placeholders():
@@ -32,6 +33,20 @@ def test_system_prompt_template_placeholders():
     assert "testdev" not in formatted
     assert "Пользователь:" not in formatted
     assert "abc1234" in formatted
+
+
+def test_chat_prompt_skips_expensive_agent_context(monkeypatch):
+    monkeypatch.setattr("main.get_project_context", lambda _root: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr("main.get_git_log", lambda _root: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(
+        "main.get_project_instructions",
+        lambda _root: (_ for _ in ()).throw(AssertionError()),
+    )
+
+    prompt = build_client_system_prompt("C:/project", "user", object(), agent=False)
+
+    assert len(prompt) < 500
+    assert "Citadex" in prompt
 
 
 def test_client_receives_system_prompt():

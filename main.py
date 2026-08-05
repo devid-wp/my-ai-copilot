@@ -56,6 +56,11 @@ PROVIDER_MODELS = {
     "local": [LOCAL_MODEL_ID],
 }
 
+CHAT_SYSTEM_PROMPT = (
+    "Ты — Citadex, помощник по программированию. Отвечай на языке пользователя кратко и по делу. "
+    "Не утверждай, что изменил файлы или выполнил команды: в chat-режиме инструменты недоступны."
+)
+
 
 @dataclass
 class SessionSettings:
@@ -99,6 +104,19 @@ def build_system_prompt(project_root: str, username: str, memory: AgentMemory) -
         team_activity=memory.get_summary() or "— нет данных —",
         git_log=get_git_log(project_root) or "— git log недоступен —",
     )
+
+
+def build_client_system_prompt(
+    project_root: str,
+    username: str,
+    memory: AgentMemory,
+    *,
+    agent: bool,
+) -> str:
+    """Avoid building and sending agent context for ordinary chat requests."""
+    if not agent:
+        return CHAT_SYSTEM_PROMPT
+    return build_system_prompt(project_root, username, memory)
 
 
 def env(name: str, default: str) -> str:
@@ -558,7 +576,7 @@ def handle_slash(
             return client, False
         settings.agent = mode == "agent"
         console.success(f"Режим: {mode}")
-        return client, False
+        return None, False
     if command == "permissions":
         if value:
             permissions = value.casefold()
@@ -923,7 +941,12 @@ def main(argv: list[str] | None = None) -> int:
             client = create_client(
                 settings.provider,
                 settings.model,
-                build_system_prompt(settings.project_root, args.user, session),
+                build_client_system_prompt(
+                    settings.project_root,
+                    args.user,
+                    session,
+                    agent=settings.agent,
+                ),
             )
             if settings.agent:
                 run_agent(
@@ -970,7 +993,12 @@ def main(argv: list[str] | None = None) -> int:
                 client = create_client(
                     settings.provider,
                     settings.model,
-                    build_system_prompt(settings.project_root, args.user, session),
+                    build_client_system_prompt(
+                        settings.project_root,
+                        args.user,
+                        session,
+                        agent=settings.agent,
+                    ),
                 )
             if settings.agent:
                 run_agent(
