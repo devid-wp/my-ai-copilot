@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
-from dotenv import load_dotenv, set_key, unset_key
+from dotenv import dotenv_values, load_dotenv, set_key, unset_key
 
 PROVIDER_API_KEYS = {
     "nvidia": "NVIDIA_API_KEY",
     "openai": "OPENAI_API_KEY",
 }
+PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+CLOUD_PROFILE_PROVIDERS = {"nvidia", "openai"}
 
 
 def credentials_path() -> Path:
@@ -43,6 +46,63 @@ def validate_api_key(provider: str, api_key: str) -> str:
     if normalized_provider == "nvidia" and not value.startswith("nvapi-"):
         raise ValueError("NVIDIA API-ключ должен начинаться с nvapi-.")
     return value
+
+
+def profile_key_name(profile_id: str) -> str:
+    """Return the environment name reserved for one stable profile ID."""
+    if not PROFILE_ID_PATTERN.fullmatch(profile_id):
+        raise ValueError(f"Invalid profile ID for credential storage: {profile_id!r}")
+    return f"CITADEX_PROFILE_{profile_id.upper().replace('-', '_')}_API_KEY"
+
+
+def save_profile_api_key(
+    profile_id: str,
+    provider: str,
+    api_key: str,
+    path: Path | None = None,
+) -> Path | None:
+    """Persist a cloud credential scoped to one profile."""
+    normalized_provider = provider.casefold()
+    environment_name = profile_key_name(profile_id)
+    if normalized_provider in {"ollama", "local"}:
+        return None
+    if normalized_provider not in CLOUD_PROFILE_PROVIDERS:
+        raise ValueError(f"Unsupported profile provider: {provider}")
+    value = validate_api_key(normalized_provider, api_key)
+    credential_file = path or credentials_path()
+    credential_file.parent.mkdir(parents=True, exist_ok=True)
+    credential_file.touch(exist_ok=True)
+    set_key(str(credential_file), environment_name, value, quote_mode="always")
+    if os.name != "nt":
+        credential_file.chmod(0o600)
+    os.environ[environment_name] = value
+    return credential_file
+
+
+def load_profile_api_key(profile_id: str, path: Path | None = None) -> str:
+    """Load one profile key, preferring an explicit process environment value."""
+    environment_name = profile_key_name(profile_id)
+    explicit = os.getenv(environment_name, "").strip()
+    if explicit:
+        return explicit
+    credential_file = path or credentials_path()
+    if not credential_file.is_file():
+        return ""
+    value = dotenv_values(credential_file).get(environment_name)
+    return str(value).strip() if value else ""
+
+
+def delete_profile_api_key(profile_id: str, path: Path | None = None) -> bool:
+    """Delete one profile credential without returning or logging its value."""
+    environment_name = profile_key_name(profile_id)
+    credential_file = path or credentials_path()
+    existed = bool(os.getenv(environment_name, ""))
+    os.environ.pop(environment_name, None)
+    if credential_file.is_file():
+        values = dotenv_values(credential_file)
+        existed = existed or bool(values.get(environment_name))
+        unset_key(str(credential_file), environment_name)
+    return existed
 
 
 def save_api_key(provider: str, api_key: str, path: Path | None = None) -> Path:
@@ -79,11 +139,16 @@ def delete_api_key(provider: str, path: Path | None = None) -> bool:
 
 
 __all__ = [
+    "CLOUD_PROFILE_PROVIDERS",
     "PROVIDER_API_KEYS",
     "credentials_path",
     "credential_status",
+    "delete_profile_api_key",
     "delete_api_key",
     "load_credentials",
+    "load_profile_api_key",
+    "profile_key_name",
     "save_api_key",
+    "save_profile_api_key",
     "validate_api_key",
 ]
