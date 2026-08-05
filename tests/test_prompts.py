@@ -5,8 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.gemini_client import GeminiClient
-from core.llm_client import NVIDIAClient
+from core.llm_client import NVIDIAClient, OpenAIClient
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 
 
@@ -104,8 +103,8 @@ def test_client_enables_tools_for_agent_messages_without_keyword_routing(monkeyp
     assert called_requests[0]["model"] == "tool-model"
 
 
-def test_gemini_chat_omits_tools_but_agent_enables_them(monkeypatch):
-    client = GeminiClient(api_key="test", system_prompt="system")
+def test_openai_chat_omits_tools_but_agent_enables_them(monkeypatch):
+    client = OpenAIClient(api_key="test", system_prompt="system")
     called_requests = []
 
     class MockCompletions:
@@ -116,7 +115,7 @@ def test_gemini_chat_omits_tools_but_agent_enables_them(monkeypatch):
     class MockChat:
         completions = MockCompletions()
 
-    monkeypatch.setattr(client._client, "chat", MockChat())
+    monkeypatch.setattr(client.client, "chat", MockChat())
 
     list(client.ask_stream("hello"))
     list(client.ask_stream("", messages=[{"role": "user", "content": "create a file"}]))

@@ -9,7 +9,7 @@ from dotenv import load_dotenv, set_key, unset_key
 
 PROVIDER_API_KEYS = {
     "nvidia": "NVIDIA_API_KEY",
-    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
 }
 
 

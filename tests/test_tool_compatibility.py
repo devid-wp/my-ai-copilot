@@ -57,6 +57,6 @@ def test_cloud_tool_probe_rejects_text_only_response(monkeypatch):
     )
     clear_cloud_tool_cache()
     assert (
-        probe_cloud_tool_support("gemini", "weak-model", "gemini-key")
+        probe_cloud_tool_support("openai", "weak-model", "openai-key")
         is ToolCompatibility.UNRELIABLE
     )

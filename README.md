@@ -5,7 +5,7 @@ Citadex is a safety-focused terminal coding agent for Windows and Python project
 ## Editions
 
 - **Citadex Local** — an offline agent powered by Qwen2.5-Coder 1.5B Q4_K_M.
-- **Citadex API** — supports NVIDIA, Gemini, and Ollama-compatible endpoints.
+- **Citadex API** — supports NVIDIA, OpenAI, and Ollama-compatible endpoints.
 
 ## Installation
 

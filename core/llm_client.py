@@ -1,4 +1,4 @@
-"""NVIDIA NIM client with streaming tool-call support."""
+"""OpenAI-compatible cloud clients with streaming tool-call support."""
 
 from __future__ import annotations
 
@@ -15,24 +15,32 @@ from core.tool_protocol import provider_tool_schemas
 TOOLS = provider_tool_schemas()
 
 
-class NVIDIAClient:
+class CloudClient:
     def __init__(
         self,
         api_key: str,
         system_prompt: str,
         model_chat: str = "meta/llama-3.1-8b-instruct",
         model_code: str = "meta/llama-3.3-70b-instruct",
-        base_url: str = "https://integrate.api.nvidia.com/v1",
+        base_url: str | None = None,
+        provider_name: str = "OpenAI",
     ) -> None:
         if not api_key:
-            raise ValueError("NVIDIA_API_KEY is required")
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=provider_timeout(),
-            max_retries=provider_max_retries(),
-        )
-        self.provider_name = "NVIDIA"
+            raise ValueError(f"{provider_name.upper()}_API_KEY is required")
+        if base_url is None:
+            self.client = OpenAI(
+                api_key=api_key,
+                timeout=provider_timeout(),
+                max_retries=provider_max_retries(),
+            )
+        else:
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=provider_timeout(),
+                max_retries=provider_max_retries(),
+            )
+        self.provider_name = provider_name
         self.system_prompt = system_prompt
         self.model_chat = model_chat
         self.model_code = model_code
@@ -123,3 +131,26 @@ class NVIDIAClient:
                 item["name"] = message["name"]
             clean.append(item)
         return clean
+
+
+class NVIDIAClient(CloudClient):
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        model_chat: str = "meta/llama-3.1-8b-instruct",
+        model_code: str = "meta/llama-3.1-8b-instruct",
+        base_url: str = "https://integrate.api.nvidia.com/v1",
+    ) -> None:
+        super().__init__(api_key, system_prompt, model_chat, model_code, base_url, "NVIDIA")
+
+
+class OpenAIClient(CloudClient):
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        model_chat: str = "gpt-5.6",
+        model_code: str = "gpt-5.6",
+    ) -> None:
+        super().__init__(api_key, system_prompt, model_chat, model_code, provider_name="OpenAI")

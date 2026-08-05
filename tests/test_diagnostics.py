@@ -37,8 +37,8 @@ def test_ollama_diagnostics_report_model_and_tools(monkeypatch):
 
 
 def test_cloud_diagnostics_report_missing_key(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    settings = SessionSettings(provider="gemini", model="gemini-test", project_root="C:/project")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    settings = SessionSettings(provider="openai", model="gpt-test", project_root="C:/project")
 
     diagnostics = session_diagnostics(settings, Session(), None)
 

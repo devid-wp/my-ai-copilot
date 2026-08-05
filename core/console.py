@@ -444,7 +444,7 @@ class Console:
         if not self.local_only:
             rows[1:1] = [
                 ("/keys", "управлять API-ключами (значения скрыты)"),
-                ("/provider [name]", "выбрать NVIDIA, Gemini или Ollama"),
+                ("/provider [name]", "выбрать NVIDIA, OpenAI или Ollama"),
                 ("/model [name]", "выбрать модель текущего провайдера"),
             ]
         for command, description in rows:

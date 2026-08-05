@@ -10,14 +10,17 @@ class FakeConsole:
         self.secret_prompts: list[str] = []
         self.messages: list[tuple[str, str]] = []
 
-    def choose(self, title: str, _options: list[str]) -> str:
+    def choose(self, title: str, _options: list[str], default: str | None = None) -> str:
         if title == "Модель" and self.model_choice:
             return self.model_choice
-        return self.choice
+        return self.choice or default or ""
 
     def secret(self, label: str) -> str:
         self.secret_prompts.append(label)
         return self.secret_value
+
+    def input(self, _label: str) -> str:
+        return self.model_choice
 
     def __getattr__(self, name: str):
         def record(message: str, *_args) -> None:
@@ -32,7 +35,7 @@ class FakeSession:
 
 
 def test_parse_slash_command_and_value():
-    assert parse_slash("/provider gemini") == ("provider", "gemini")
+    assert parse_slash("/provider openai") == ("provider", "openai")
     assert parse_slash("  /MODE agent  ") == ("mode", "agent")
     assert parse_slash("ordinary prompt") is None
 
@@ -62,14 +65,14 @@ def test_local_edition_blocks_cloud_configuration_commands():
 
 
 def test_provider_command_resets_model_and_client(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "configured")
+    monkeypatch.setenv("OPENAI_API_KEY", "configured")
     settings = SessionSettings(provider="nvidia", model="custom")
-    console = FakeConsole(model_choice="gemini-2.5-pro")
-    client, should_exit = handle_slash(("provider", "gemini"), settings, console, FakeSession(), object())
+    console = FakeConsole(model_choice="gpt-5.6")
+    client, should_exit = handle_slash(("provider", "openai"), settings, console, FakeSession(), object())
     assert client is None
     assert should_exit is False
-    assert settings.provider == "gemini"
-    assert settings.model == "gemini-2.5-pro"
+    assert settings.provider == "openai"
+    assert settings.model == "gpt-5.6"
     assert console.secret_prompts == []
 
 
@@ -97,8 +100,8 @@ def test_ollama_model_menu_uses_installed_models(monkeypatch):
 
 
 def test_model_command_rejects_model_from_another_provider(monkeypatch):
-    monkeypatch.setattr("main.provider_models", lambda _provider: ["gemini-2.0-flash"])
-    settings = SessionSettings(provider="gemini", model="gemini-2.0-flash")
+    settings = SessionSettings(provider="ollama", model="qwen2.5:3b")
+    monkeypatch.setattr("main.provider_models", lambda _provider: ["qwen2.5:3b"])
     console = FakeConsole()
     current_client = object()
 
@@ -110,68 +113,68 @@ def test_model_command_rejects_model_from_another_provider(monkeypatch):
         current_client,
     )
 
-    assert settings.model == "gemini-2.0-flash"
+    assert settings.model == "qwen2.5:3b"
     assert client is current_client
     assert any(level == "error" and "недоступна" in message for level, message in console.messages)
 
 
 def test_provider_command_prompts_for_missing_api_key(monkeypatch):
     saved: list[tuple[str, str]] = []
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
     settings = SessionSettings(provider="nvidia")
 
     client, _ = handle_slash(
-        ("provider", "gemini"),
+        ("provider", "openai"),
         settings,
-        FakeConsole(secret="secret-value", model_choice="gemini-2.0-flash"),
+        FakeConsole(secret="secret-value", model_choice="gpt-5.6"),
         FakeSession(),
         object(),
     )
 
-    assert saved == [("gemini", "secret-value")]
-    assert settings.provider == "gemini"
+    assert saved == [("openai", "secret-value")]
+    assert settings.provider == "openai"
     assert client is None
 
 
 def test_provider_command_reuses_saved_api_key(monkeypatch):
     saved: list[tuple[str, str]] = []
-    monkeypatch.setenv("GEMINI_API_KEY", "old-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "old-key")
     monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
     settings = SessionSettings(provider="nvidia")
 
     handle_slash(
-        ("provider", "gemini"),
+        ("provider", "openai"),
         settings,
-        FakeConsole(secret="new-key", model_choice="gemini-2.0-flash"),
+        FakeConsole(secret="new-key", model_choice="gpt-5.6"),
         FakeSession(),
         object(),
     )
 
     assert saved == []
-    assert settings.provider == "gemini"
+    assert settings.provider == "openai"
 
 
 def test_provider_command_rejects_invalid_nvidia_key(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-    settings = SessionSettings(provider="gemini")
+    settings = SessionSettings(provider="openai")
     console = FakeConsole(secret="wrong-key")
 
     client, _ = handle_slash(
         ("provider", "nvidia"), settings, console, FakeSession(), object()
     )
 
-    assert settings.provider == "gemini"
+    assert settings.provider == "openai"
     assert client is not None
     assert any("nvapi-" in message for level, message in console.messages if level == "error")
 
 
 def test_provider_command_keeps_current_provider_when_key_is_empty(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     settings = SessionSettings(provider="nvidia")
 
     client, _ = handle_slash(
-        ("provider", "gemini"), settings, FakeConsole(secret=""), FakeSession(), object()
+        ("provider", "openai"), settings, FakeConsole(secret=""), FakeSession(), object()
     )
 
     assert settings.provider == "nvidia"
@@ -182,12 +185,12 @@ def test_provider_command_keeps_current_provider_when_key_cannot_be_saved(monkey
     def fail_save(_provider, _key):
         raise OSError("denied")
 
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("main.save_api_key", fail_save)
     settings = SessionSettings(provider="nvidia")
 
     client, _ = handle_slash(
-        ("provider", "gemini"), settings, FakeConsole(secret="secret"), FakeSession(), object()
+        ("provider", "openai"), settings, FakeConsole(secret="secret"), FakeSession(), object()
     )
 
     assert settings.provider == "nvidia"
@@ -262,12 +265,12 @@ def test_replacing_active_provider_key_resets_client_and_cached_check(monkeypatc
     monkeypatch.setattr("main.configure_provider_key", lambda *_args, **_kwargs: True)
     cleared: list[str] = []
     monkeypatch.setattr("main.rate_limit_monitor.clear", cleared.append)
-    settings = SessionSettings(provider="gemini")
-    console = FakeConsole(choice="gemini")
+    settings = SessionSettings(provider="openai")
+    console = FakeConsole(choice="openai")
 
-    choices = iter(["gemini", "Заменить"])
+    choices = iter(["openai", "Заменить"])
     console.choose = lambda _title, _options: next(choices)
     client, _ = handle_slash(("keys", ""), settings, console, FakeSession(), object())
 
     assert client is None
-    assert cleared == ["gemini"]
+    assert cleared == ["openai"]

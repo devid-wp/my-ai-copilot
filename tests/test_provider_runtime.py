@@ -16,6 +16,6 @@ def test_provider_runtime_limits_are_configurable_and_bounded(monkeypatch):
 
 def test_provider_errors_are_explained():
     assert "отведённое время" in explain_provider_error(TimeoutError("timed out"), "NVIDIA")
-    assert "лимит" in explain_provider_error(RuntimeError("429 rate limit"), "Gemini")
-    assert "/keys" in explain_provider_error(RuntimeError("invalid API key"), "Gemini")
+    assert "лимит" in explain_provider_error(RuntimeError("429 rate limit"), "OpenAI")
+    assert "/keys" in explain_provider_error(RuntimeError("invalid API key"), "OpenAI")
     assert "интернет" in explain_provider_error(RuntimeError("connection failed"), "NVIDIA")

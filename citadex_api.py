@@ -10,23 +10,18 @@ from typing import Any
 
 from core.credentials import PROVIDER_API_KEYS, save_api_key, validate_api_key
 from core.preferences import UserPreferences, save_preferences
-from core.provider_catalog import select_nvidia_model
 from core.tool_smoke import check_native_tool_calling
 from main import main as citadex_main
 
-API_MODELS = {
-    "gemini": "gemini-2.5-pro",
-}
-
 
 def choose_provider() -> str:
-    print("Выберите API-провайдера:\n  1. NVIDIA\n  2. Gemini")
+    print("Выберите API-провайдера:\n  1. NVIDIA\n  2. OpenAI")
     while True:
         answer = input("\nНомер [1]: ").strip().casefold()
         if answer in {"", "1", "nvidia"}:
             return "nvidia"
-        if answer in {"2", "gemini"}:
-            return "gemini"
+        if answer in {"2", "openai"}:
+            return "openai"
         print("Введите 1 или 2.")
 
 
@@ -35,14 +30,16 @@ def create_api_client(provider: str, api_key: str, model: str) -> Any:
         from core.llm_client import NVIDIAClient
 
         return NVIDIAClient(api_key, "Citadex tool-calling test", model_chat=model, model_code=model)
-    from core.gemini_client import GeminiClient
+    from core.llm_client import OpenAIClient
 
-    return GeminiClient(api_key, "Citadex tool-calling test", model_chat=model, model_code=model)
+    return OpenAIClient(api_key, "Citadex tool-calling test", model_chat=model, model_code=model)
 
 
-def configure_api(provider: str, api_key: str) -> str:
+def configure_api(provider: str, api_key: str, model: str) -> str:
     key = validate_api_key(provider, api_key)
-    model = select_nvidia_model(key) if provider == "nvidia" else API_MODELS[provider]
+    model = model.strip()
+    if not model:
+        raise ValueError("Имя модели не может быть пустым.")
     client = create_api_client(provider, key, model)
     check_native_tool_calling(client)
     save_api_key(provider, key)
@@ -73,9 +70,13 @@ def run() -> int:
     if not api_key:
         print("\nОшибка: API-ключ не введён.", file=sys.stderr)
         return 2
+    model = input("Введите точное имя модели: ").strip()
+    if not model:
+        print("\nОшибка: имя модели не введено.", file=sys.stderr)
+        return 2
     print("\nПроверяю API-ключ и native tool calling...")
     try:
-        model = configure_api(provider, api_key)
+        model = configure_api(provider, api_key, model)
     except Exception as exc:
         print(f"\nПроверка не пройдена: {exc}", file=sys.stderr)
         return 2

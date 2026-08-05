@@ -40,7 +40,6 @@ from core.local_runtime import LOCAL_MODEL_ID, local_server_online
 from core.memory import AgentMemory
 from core.preferences import UserPreferences, load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
-from core.provider_catalog import recommended_nvidia_models, select_nvidia_model
 from core.provider_runtime import explain_provider_error, provider_name
 from core.rate_limits import rate_limit_monitor
 from core.tool_compatibility import ToolCompatibility, probe_cloud_tool_support
@@ -51,8 +50,8 @@ from core.verification import verify_agent_changes
 from core.version import get_version
 
 PROVIDER_MODELS = {
-    "nvidia": ["meta/llama-3.1-8b-instruct", "meta/llama-3.3-70b-instruct"],
-    "gemini": ["gemini-2.0-flash", "gemini-2.5-pro"],
+    "nvidia": ["meta/llama-3.1-8b-instruct"],
+    "openai": ["gpt-5.6"],
     "ollama": ["llama3.2", "qwen2.5-coder"],
     "local": [LOCAL_MODEL_ID],
 }
@@ -107,15 +106,13 @@ def env(name: str, default: str) -> str:
 
 
 def provider_models(provider: str) -> list[str]:
-    """Return configured cloud models or models installed in local Ollama."""
-    if provider == "nvidia":
-        return recommended_nvidia_models(os.getenv("NVIDIA_API_KEY", ""))
+    """Return models managed by a local runtime."""
     if provider == "local":
         if not local_server_online():
             raise RuntimeError("Встроенная локальная модель не запущена.")
         return [LOCAL_MODEL_ID]
     if provider != "ollama":
-        return PROVIDER_MODELS[provider]
+        raise ValueError(f"Для {provider.upper()} имя модели вводится вручную.")
 
     from core.ollama_client import OllamaClient
 
@@ -130,6 +127,10 @@ def provider_models(provider: str) -> list[str]:
 
 def validate_provider_model(provider: str, model: str) -> list[str]:
     """Reject model IDs that are unavailable through the active provider."""
+    if provider in PROVIDER_API_KEYS:
+        if not model.strip():
+            raise ValueError("Имя модели не может быть пустым.")
+        return [model.strip()]
     models = provider_models(provider)
     if model not in models:
         raise ValueError(
@@ -137,6 +138,21 @@ def validate_provider_model(provider: str, model: str) -> list[str]:
             "Используйте /model без аргумента, чтобы увидеть доступные модели."
         )
     return models
+
+
+def choose_model(provider: str, console: Console, preferred: str | None = None) -> str:
+    """Read cloud model IDs directly; show menus only for locally discoverable models."""
+    if provider in PROVIDER_API_KEYS:
+        suffix = f" (Enter = {preferred})" if preferred else ""
+        model = console.input(f"Имя модели{suffix}").strip() or (preferred or "")
+        validate_provider_model(provider, model)
+        return model
+    models = provider_models(provider)
+    return console.choose(
+        "Модель",
+        models,
+        default=preferred if preferred in models else models[0],
+    )
 
 
 def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bool:
@@ -252,32 +268,21 @@ def run_startup_setup(
     if not configure_provider_key(provider, console, allow_replacement=False):
         return False
 
-    try:
-        models = provider_models(provider)
-    except RuntimeError as exc:
-        console.error(str(exc))
-        return False
     preferred_model = settings.model or preferences.models.get(provider)
-    available_models = list(models)
-    while available_models:
-        model = console.choose(
-            "Модель",
-            available_models,
-            default=preferred_model if preferred_model in available_models else available_models[0],
-        )
+    while True:
+        try:
+            model = choose_model(provider, console, preferred_model)
+        except (RuntimeError, ValueError) as exc:
+            console.error(str(exc))
+            return False
         settings.provider = provider
         settings.model = model
         settings.agent = mode == "agent"
         settings.tool_compatibility = "unknown"
         if not settings.agent or verify_tool_compatibility(settings, console):
             break
-        available_models.remove(model)
         preferred_model = None
-        if available_models:
-            console.warning("Выберите другую модель для agent-режима.")
-    else:
-        console.error("Нет совместимой модели для agent-режима.")
-        return False
+        console.warning("Введите другую модель для agent-режима.")
 
     preferences.provider = settings.provider
     preferences.mode = settings.mode
@@ -395,11 +400,14 @@ def handle_slash(
         console.status(session_diagnostics(settings, session, client))
         return client, False
     if command == "doctor":
-        try:
-            available_models = provider_models(settings.provider)
-        except Exception as exc:
-            available_models = None
-            console.warning(f"Каталог моделей недоступен: {exc}")
+        if settings.provider in PROVIDER_API_KEYS:
+            available_models = [settings.display_model]
+        else:
+            try:
+                available_models = provider_models(settings.provider)
+            except Exception as exc:
+                available_models = None
+                console.warning(f"Каталог моделей недоступен: {exc}")
         try:
             ollama_online = bool(provider_models("ollama"))
         except Exception:
@@ -506,11 +514,10 @@ def handle_slash(
             console.error("Провайдер не изменён.")
             return client, False
         try:
-            models = provider_models(provider)
-        except RuntimeError as exc:
+            model = choose_model(provider, console)
+        except (RuntimeError, ValueError) as exc:
             console.error(str(exc))
             return client, False
-        model = console.choose("Модель", models)
         settings.provider = provider
         settings.model = model
         settings.tool_compatibility = "unknown"
@@ -529,11 +536,10 @@ def handle_slash(
                 return client, False
         else:
             try:
-                models = provider_models(settings.provider)
-            except RuntimeError as exc:
+                model = choose_model(settings.provider, console, settings.model)
+            except (RuntimeError, ValueError) as exc:
                 console.error(str(exc))
                 return client, False
-            model = console.choose("Модель", models)
         settings.model = model
         settings.tool_compatibility = "unknown"
         if settings.agent and not verify_tool_compatibility(settings, console):
@@ -582,24 +588,25 @@ def create_client(provider: str, model: str | None, system_prompt: str):
         key = os.getenv("NVIDIA_API_KEY", "")
         if not key:
             raise ValueError("NVIDIA_API_KEY не задан. Добавьте его в .env или окружение.")
-        selected_model = model or select_nvidia_model(key)
+        selected_model = model or env("NVIDIA_MODEL", PROVIDER_MODELS["nvidia"][0])
         return NVIDIAClient(
             key,
             system_prompt,
             model_chat=selected_model,
             model_code=selected_model,
         )
-    if provider == "gemini":
-        from core.gemini_client import GeminiClient
+    if provider == "openai":
+        from core.llm_client import OpenAIClient
 
-        key = os.getenv("GEMINI_API_KEY", "")
+        key = os.getenv("OPENAI_API_KEY", "")
         if not key:
-            raise ValueError("GEMINI_API_KEY не задан. Добавьте его в .env или окружение.")
-        return GeminiClient(
+            raise ValueError("OPENAI_API_KEY не задан. Добавьте его в .env или окружение.")
+        selected_model = model or env("OPENAI_MODEL", PROVIDER_MODELS["openai"][0])
+        return OpenAIClient(
             key,
             system_prompt,
-            model_chat=model or env("GEMINI_MODEL_CHAT", "gemini-2.0-flash"),
-            model_code=model or env("GEMINI_MODEL_CODE", "gemini-2.5-pro"),
+            model_chat=selected_model,
+            model_code=selected_model,
         )
     if provider == "ollama":
         from core.ollama_client import OllamaClient
@@ -831,7 +838,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Citadex — CLI AI-ассистент для разработки")
     parser.add_argument("--version", action="version", version=f"%(prog)s {get_version()}")
     parser.add_argument("--project", "-p", default=None, help="Корень проекта")
-    parser.add_argument("--provider", choices=["nvidia", "gemini", "ollama", "local"], default=None)
+    parser.add_argument("--provider", choices=["nvidia", "openai", "ollama", "local"], default=None)
     parser.add_argument("--model", "-m", help="Одна модель для чата и кода")
     parser.add_argument("--agent", "-a", action="store_true", help="Разрешить агентные инструменты")
     parser.add_argument("--oneshot", "-o", metavar="PROMPT", help="Выполнить один запрос и выйти")

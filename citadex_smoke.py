@@ -12,7 +12,7 @@ from main import create_client
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run an isolated live native-tool smoke test")
-    parser.add_argument("--provider", choices=("nvidia", "gemini"), required=True)
+    parser.add_argument("--provider", choices=("nvidia", "openai"), required=True)
     parser.add_argument("--model", default=None)
     args = parser.parse_args(argv)
     try:

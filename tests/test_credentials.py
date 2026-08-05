@@ -20,21 +20,21 @@ def test_save_api_key_persists_and_updates_current_environment(tmp_path, monkeyp
 def test_save_api_key_preserves_other_credentials(tmp_path):
     target = tmp_path / ".env"
     save_api_key("nvidia", "nvapi-nvidia-secret", target)
-    save_api_key("gemini", "gemini-secret", target)
+    save_api_key("openai", "openai-secret", target)
 
     values = dotenv_values(target)
     assert values["NVIDIA_API_KEY"] == "nvapi-nvidia-secret"
-    assert values["GEMINI_API_KEY"] == "gemini-secret"
+    assert values["OPENAI_API_KEY"] == "openai-secret"
 
 
 def test_load_credentials_does_not_override_explicit_environment(tmp_path, monkeypatch):
     target = tmp_path / ".env"
-    save_api_key("gemini", "saved-secret", target)
-    monkeypatch.setenv("GEMINI_API_KEY", "explicit-secret")
+    save_api_key("openai", "saved-secret", target)
+    monkeypatch.setenv("OPENAI_API_KEY", "explicit-secret")
 
     load_credentials(target)
 
-    assert os.environ["GEMINI_API_KEY"] == "explicit-secret"
+    assert os.environ["OPENAI_API_KEY"] == "explicit-secret"
 
 
 def test_save_api_key_rejects_unsupported_provider(tmp_path):
@@ -47,5 +47,5 @@ def test_validate_api_key_rejects_wrong_nvidia_key_format():
         validate_api_key("nvidia", "not-an-nvidia-key")
 
 
-def test_validate_api_key_accepts_gemini_key_without_prefix_requirement():
-    assert validate_api_key("gemini", "gemini-key") == "gemini-key"
+def test_validate_api_key_accepts_openai_key_without_prefix_requirement():
+    assert validate_api_key("openai", "openai-key") == "openai-key"

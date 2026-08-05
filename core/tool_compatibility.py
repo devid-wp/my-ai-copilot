@@ -30,13 +30,16 @@ def probe_cloud_tool_support(provider: str, model: str, api_key: str) -> ToolCom
     if cache_key in _cloud_cache:
         return _cloud_cache[cache_key]
 
-    base_url, _probe_model = PROBE_CONFIG[normalized]
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=fast_probe_timeout(),
-        max_retries=0,
-    )
+    base_url = PROBE_CONFIG[normalized]
+    if base_url is None:
+        client = OpenAI(api_key=api_key, timeout=fast_probe_timeout(), max_retries=0)
+    else:
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=fast_probe_timeout(),
+            max_retries=0,
+        )
     response = client.chat.completions.create(
         model=model,
         messages=[

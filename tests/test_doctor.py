@@ -2,13 +2,13 @@ from core.doctor import collect_doctor_checks
 
 
 def test_doctor_reports_provider_model_and_project(monkeypatch, tmp_path):
-    monkeypatch.setenv("GEMINI_API_KEY", "configured")
+    monkeypatch.setenv("OPENAI_API_KEY", "configured")
 
     checks = collect_doctor_checks(
         str(tmp_path),
-        "gemini",
-        "gemini-2.0-flash",
-        ["gemini-2.0-flash"],
+        "openai",
+        "gpt-5.6",
+        ["gpt-5.6"],
         ollama_online=False,
     )
     states = {check.name: check.ok for check in checks}
@@ -27,7 +27,7 @@ def test_doctor_rejects_cross_provider_model(monkeypatch, tmp_path):
     checks = collect_doctor_checks(
         str(tmp_path),
         "nvidia",
-        "gemini-2.0-flash",
+        "openai-model",
         ["meta/llama-3.1-8b-instruct"],
         ollama_online=True,
     )

@@ -18,6 +18,9 @@ class WizardConsole:
         self.secret_calls += 1
         return self.secret_value
 
+    def input(self, _label):
+        return self.answers["Модель"]
+
     def __getattr__(self, name):
         def record(message, *_args):
             self.messages.append((name, message))
@@ -28,52 +31,51 @@ class WizardConsole:
 def test_first_run_collects_and_saves_cloud_key(monkeypatch):
     saved_keys = []
     saved_preferences = []
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("main.save_api_key", lambda provider, key: saved_keys.append((provider, key)))
     monkeypatch.setattr("main.save_preferences", saved_preferences.append)
     console = WizardConsole(
         {
             "Режим запуска": "chat",
-            "Провайдер": "gemini",
-            "Модель": "gemini-2.0-flash",
+            "Провайдер": "openai",
+            "Модель": "gpt-5.6",
         },
-        secret="gemini-secret",
+        secret="openai-secret",
     )
     settings = SessionSettings()
 
     assert run_startup_setup(settings, console, UserPreferences()) is True
 
-    assert saved_keys == [("gemini", "gemini-secret")]
+    assert saved_keys == [("openai", "openai-secret")]
     assert console.secret_calls == 1
-    assert settings.provider == "gemini"
-    assert settings.model == "gemini-2.0-flash"
+    assert settings.provider == "openai"
+    assert settings.model == "gpt-5.6"
     assert settings.mode == "chat"
-    assert saved_preferences[0].models["gemini"] == "gemini-2.0-flash"
+    assert saved_preferences[0].models["openai"] == "gpt-5.6"
 
 
 def test_repeat_run_reuses_key_and_offers_saved_defaults(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "already-saved")
+    monkeypatch.setenv("OPENAI_API_KEY", "already-saved")
     monkeypatch.setattr("main.save_preferences", lambda _preferences: None)
     preferences = UserPreferences(
-        provider="gemini",
+        provider="openai",
         mode="chat",
-        models={"gemini": "gemini-2.5-pro"},
+        models={"openai": "gpt-5.6"},
     )
     console = WizardConsole(
         {
             "Режим запуска": "chat",
-            "Провайдер": "gemini",
-            "Модель": "gemini-2.5-pro",
+            "Провайдер": "openai",
+            "Модель": "gpt-5.6",
         }
     )
-    settings = SessionSettings(provider="gemini", model="gemini-2.5-pro")
+    settings = SessionSettings(provider="openai", model="gpt-5.6")
 
     assert run_startup_setup(settings, console, preferences) is True
 
     assert console.secret_calls == 0
     assert console.defaults["Режим запуска"] == "chat"
-    assert console.defaults["Провайдер"] == "gemini"
-    assert console.defaults["Модель"] == "gemini-2.5-pro"
+    assert console.defaults["Провайдер"] == "openai"
 
 
 def test_agent_setup_reprompts_after_incompatible_ollama_model(monkeypatch):
