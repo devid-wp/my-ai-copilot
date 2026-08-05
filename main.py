@@ -25,7 +25,7 @@ from core.agent_loop import (
 )
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
-from core.credential_probe import probe_provider_key
+from core.credential_probe import probe_provider_key, validate_provider_model_access
 from core.credentials import (
     PROVIDER_API_KEYS,
     credential_status,
@@ -146,6 +146,8 @@ def choose_model(provider: str, console: Console, preferred: str | None = None) 
         suffix = f" (Enter = {preferred})" if preferred else ""
         model = console.input(f"Имя модели{suffix}").strip() or (preferred or "")
         validate_provider_model(provider, model)
+        if provider == "nvidia":
+            validate_provider_model_access(provider, model, os.getenv("NVIDIA_API_KEY", ""))
         return model
     models = provider_models(provider)
     return console.choose(

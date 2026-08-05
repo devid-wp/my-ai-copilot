@@ -17,6 +17,7 @@ __pycache__/
 
 # Test and analysis output
 .pytest_cache/
+.test-tmp/
 .mypy_cache/
 .ruff_cache/
 .tox/

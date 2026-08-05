@@ -19,3 +19,9 @@ def test_provider_errors_are_explained():
     assert "лимит" in explain_provider_error(RuntimeError("429 rate limit"), "OpenAI")
     assert "/keys" in explain_provider_error(RuntimeError("invalid API key"), "OpenAI")
     assert "интернет" in explain_provider_error(RuntimeError("connection failed"), "NVIDIA")
+
+
+def test_nvidia_gone_model_error_has_actionable_message():
+    message = explain_provider_error(RuntimeError("Error code: 410 Gone"), "NVIDIA")
+    assert "удалена" in message
+    assert "/model" in message

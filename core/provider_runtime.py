@@ -65,6 +65,11 @@ def explain_provider_error(exc: Exception, provider: str) -> str:
         return f"{provider}: исчерпан лимит запросов. Подождите и повторите позже."
     if any(marker in lowered for marker in ("401", "403", "invalid api key", "authentication")):
         return f"{provider}: API-ключ недействителен или не имеет доступа. Проверьте его через /keys."
+    if any(marker in lowered for marker in ("410", "gone")):
+        return (
+            f"{provider}: выбранная модель удалена или больше недоступна. "
+            "Укажите актуальное имя через /model."
+        )
     if any(
         marker in lowered
         for marker in ("connection", "connecterror", "network", "dns", "name resolution")

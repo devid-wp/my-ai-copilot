@@ -113,6 +113,7 @@ def test_agent_setup_remembers_automatic_permissions(monkeypatch):
     from core.tool_compatibility import ToolCompatibility
 
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-saved")
+    monkeypatch.setattr("main.validate_provider_model_access", lambda *_args: None)
     monkeypatch.setattr("main.provider_models", lambda _provider: ["meta/llama-3.1-8b-instruct"])
     monkeypatch.setattr(
         "main.probe_cloud_tool_support",
