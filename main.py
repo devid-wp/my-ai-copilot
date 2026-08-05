@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -23,6 +23,15 @@ from core.agent_loop import (
     tool_path_key,
     unresolved_tool_failures,
 )
+from core.config_profiles import (
+    ConfigProfile,
+    create_profile_id,
+    get_active_profile,
+    load_profile_store,
+    save_profile_store,
+    set_active_profile,
+)
+from core.config_wizard import create_profile_interactively
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
 from core.credential_probe import probe_provider_key, validate_provider_model_access
@@ -31,6 +40,7 @@ from core.credentials import (
     credential_status,
     delete_api_key,
     load_credentials,
+    load_profile_api_key,
     save_api_key,
     validate_api_key,
 )
@@ -71,6 +81,7 @@ class SessionSettings:
     tool_compatibility: str = "unknown"
     project_root: str = ""
     local_only: bool = False
+    api_key: str = field(default="", repr=False)
 
     @property
     def mode(self) -> str:
@@ -83,6 +94,18 @@ class SessionSettings:
     @property
     def display_model(self) -> str:
         return self.model or PROVIDER_MODELS[self.provider][0]
+
+
+def settings_from_profile(profile: ConfigProfile, api_key: str = "") -> SessionSettings:
+    """Create mutable session state from one validated, immutable profile."""
+    return SessionSettings(
+        provider=profile.provider,
+        model=profile.model,
+        agent=profile.mode == "agent",
+        auto_approve=profile.permissions == "auto",
+        project_root=profile.project_root,
+        api_key=api_key,
+    )
 
 
 load_credentials()
@@ -221,11 +244,10 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
             )
             compatibility = client.check_tool_support(model)
         else:
-            environment_name = PROVIDER_API_KEYS[settings.provider]
             compatibility = probe_cloud_tool_support(
                 settings.provider,
                 model,
-                os.getenv(environment_name, ""),
+                settings.api_key or os.getenv(PROVIDER_API_KEYS[settings.provider], ""),
             )
     except Exception as exc:
         settings.tool_compatibility = "unavailable"
@@ -398,7 +420,7 @@ def session_diagnostics(
         )
     else:
         environment_name = PROVIDER_API_KEYS[settings.provider]
-        if not os.getenv(environment_name):
+        if not settings.api_key and not os.getenv(environment_name):
             provider_state = "missing key"
         tools_state = "supported"
         try:
@@ -657,12 +679,17 @@ def handle_slash(
     return client, False
 
 
-def create_client(provider: str, model: str | None, system_prompt: str):
+def create_client(
+    provider: str,
+    model: str | None,
+    system_prompt: str,
+    api_key: str = "",
+):
     provider = provider.lower()
     if provider == "nvidia":
         from core.llm_client import NVIDIAClient
 
-        key = os.getenv("NVIDIA_API_KEY", "")
+        key = api_key or os.getenv("NVIDIA_API_KEY", "")
         if not key:
             raise ValueError("NVIDIA_API_KEY не задан. Добавьте его в .env или окружение.")
         selected_model = model or env("NVIDIA_MODEL", PROVIDER_MODELS["nvidia"][0])
@@ -675,7 +702,7 @@ def create_client(provider: str, model: str | None, system_prompt: str):
     if provider == "openai":
         from core.llm_client import OpenAIClient
 
-        key = os.getenv("OPENAI_API_KEY", "")
+        key = api_key or os.getenv("OPENAI_API_KEY", "")
         if not key:
             raise ValueError("OPENAI_API_KEY не задан. Добавьте его в .env или окружение.")
         selected_model = model or env("OPENAI_MODEL", PROVIDER_MODELS["openai"][0])
@@ -939,49 +966,63 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     console = Console(local_only=args.local_only)
-    preferences = load_preferences()
-    project_root = str(Path(args.project or os.getcwd()).resolve())
-    if not Path(project_root).is_dir():
-        console.error(f"Папка проекта не найдена: {project_root}")
+    try:
+        profile_store = load_profile_store()
+    except ValueError as exc:
+        console.error(str(exc))
         return 2
-    preferences.remember_project(project_root)
-    with suppress(OSError):
-        save_preferences(preferences)
-    session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
-    provider = args.provider or preferences.provider or os.getenv("LLM_PROVIDER", "nvidia")
-    preferred_model = args.model or preferences.models.get(provider)
-    settings = SessionSettings(
-        provider,
-        preferred_model,
-        args.agent or preferences.mode == "agent",
-        args.yes or preferences.permissions == "auto",
-    )
-    settings.project_root = project_root
-    settings.local_only = args.local_only
-    interactive_setup = not args.oneshot and not args.skip_setup
-    if interactive_setup:
+
+    if not profile_store.profiles:
         try:
-            key_name = PROVIDER_API_KEYS.get(settings.provider)
-            configured = bool(
-                preferences.models.get(settings.provider)
-                and (key_name is None or os.getenv(key_name))
-            )
-            quick = configured and console.quick_start(session_diagnostics(settings, session, None))
-            if not quick:
-                settings.project_root = choose_recent_project(console, preferences, settings.project_root)
-                project_root = settings.project_root
-                session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
-                if not run_startup_setup(settings, console, preferences):
-                    return 2
+            created_profile = create_profile_interactively(console)
+            profile_id = create_profile_id(created_profile.name, profile_store.profiles)
+            profile_store.profiles[profile_id] = created_profile
+            set_active_profile(profile_store, profile_id)
+            save_profile_store(profile_store)
         except (EOFError, KeyboardInterrupt):
             console.goodbye()
             return 0
-    else:
-        if settings.provider == "ollama" and settings.model is None:
-            with suppress(RuntimeError):
-                settings.model = provider_models("ollama")[0]
-        if settings.agent and not verify_tool_compatibility(settings, console):
+        except OSError as exc:
+            console.error(f"Не удалось сохранить профиль: {exc}")
             return 2
+
+    active_profile = get_active_profile(profile_store)
+    if active_profile is None:
+        profile_id = next(iter(profile_store.profiles))
+        active_profile = set_active_profile(profile_store, profile_id)
+        try:
+            save_profile_store(profile_store)
+        except OSError as exc:
+            console.error(f"Не удалось выбрать активный профиль: {exc}")
+            return 2
+    else:
+        active_profile_id = profile_store.active_profile
+        assert active_profile_id is not None
+        profile_id = active_profile_id
+
+    settings = settings_from_profile(active_profile, load_profile_api_key(profile_id))
+    # These flags are session-only overrides for non-interactive automation.
+    if args.provider:
+        settings.provider = args.provider
+        if args.provider != active_profile.provider:
+            key_name = PROVIDER_API_KEYS.get(args.provider)
+            settings.api_key = os.getenv(key_name, "") if key_name else ""
+    if args.model:
+        settings.model = args.model
+    if args.agent:
+        settings.agent = True
+    if args.yes:
+        settings.auto_approve = True
+
+    project_root = str(Path(args.project or active_profile.project_root).resolve())
+    if not Path(project_root).is_dir():
+        console.error(f"Папка проекта не найдена: {project_root}")
+        return 2
+    settings.project_root = project_root
+    settings.local_only = args.local_only
+    session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
+    if settings.agent and not verify_tool_compatibility(settings, console):
+        return 2
     client = None
     approved_external_paths: set[str] = set()
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
@@ -1004,6 +1045,7 @@ def main(argv: list[str] | None = None) -> int:
                     session,
                     agent=settings.agent,
                 ),
+                settings.api_key,
             )
             if settings.agent:
                 run_agent(
@@ -1056,6 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
                         session,
                         agent=settings.agent,
                     ),
+                    settings.api_key,
                 )
             if settings.agent:
                 run_agent(
