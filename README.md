@@ -32,7 +32,7 @@ See the [installation guide](docs/INSTALLATION.md) for all available options.
 /help          Show all commands
 ```
 
-API builds also provide `/provider`, `/model`, and `/keys`.
+Use `/config` to select, create, edit, verify, or delete configuration profiles.
 
 ## Safety
 

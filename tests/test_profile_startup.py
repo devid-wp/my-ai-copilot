@@ -51,8 +51,8 @@ def test_first_launch_creates_profile_before_building_client(tmp_path, monkeypat
     monkeypatch.setattr("main.load_profile_api_key", lambda profile_id: f"key:{profile_id}")
     monkeypatch.setattr(
         "main.create_client",
-        lambda provider, model, _prompt, api_key: clients.append(
-            (provider, model, api_key)
+        lambda selected, api_key, _prompt: clients.append(
+            (selected.provider, selected.model, api_key)
         )
         or object(),
     )
@@ -75,8 +75,8 @@ def test_cli_overrides_do_not_rewrite_active_profile(tmp_path, monkeypatch):
     monkeypatch.setattr("main.load_profile_api_key", lambda _profile_id: "profile-key")
     monkeypatch.setattr(
         "main.create_client",
-        lambda provider, model, _prompt, api_key: clients.append(
-            (provider, model, api_key)
+        lambda selected, api_key, _prompt: clients.append(
+            (selected.provider, selected.model, api_key)
         )
         or object(),
     )

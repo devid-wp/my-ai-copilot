@@ -47,5 +47,5 @@ NVIDIA_API_KEY=nvapi-...
 OPENAI_API_KEY=...
 ```
 
-Keys can also be managed inside Citadex with `/keys`. Stored key values are
+Profiles and their keys can be managed inside Citadex with `/config`. Stored key values are
 never printed.

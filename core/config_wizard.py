@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ def create_profile_interactively(
     existing: ConfigProfile | None = None,
     *,
     profile_id: str | None = None,
+    existing_profile_ids: Iterable[str] = (),
 ) -> ConfigProfile:
     """Collect, verify, and return one profile; persist its key only after validation."""
     while True:
@@ -41,7 +43,7 @@ def create_profile_interactively(
                 default=existing.provider if existing else "nvidia",
             )
             same_provider = existing is not None and existing.provider == provider
-            stable_id = profile_id or create_profile_id(name)
+            stable_id = profile_id or create_profile_id(name, existing_profile_ids)
 
             api_key = ""
             if provider in CLOUD_PROFILE_PROVIDERS:

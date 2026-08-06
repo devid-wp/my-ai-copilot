@@ -52,11 +52,9 @@ TOOL_ACTIONS = {
 }
 
 SLASH_COMMANDS = [
-    "/provider",
-    "/model",
+    "/config",
     "/mode",
     "/project",
-    "/keys",
     "/undo",
     "/permissions",
     "/status",
@@ -66,6 +64,7 @@ SLASH_COMMANDS = [
     "/exit",
 ]
 LOCAL_SLASH_COMMANDS = [
+    "/config",
     "/mode",
     "/project",
     "/undo",
@@ -441,12 +440,7 @@ class Console:
             ("/clear", "очистить историю"),
             ("/exit", "выйти"),
         ]
-        if not self.local_only:
-            rows[1:1] = [
-                ("/keys", "управлять API-ключами (значения скрыты)"),
-                ("/provider [name]", "выбрать NVIDIA, OpenAI или Ollama"),
-                ("/model [name]", "выбрать модель текущего провайдера"),
-            ]
+        rows[1:1] = [("/config", "выбрать, создать или изменить профиль")]
         for command, description in rows:
             commands.add_row(command, description)
         footer = Text("Команды без аргумента открывают меню  ·  TAB дополняет команды", style=MUTED)

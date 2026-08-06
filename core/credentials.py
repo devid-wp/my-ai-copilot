@@ -122,29 +122,11 @@ def save_api_key(provider: str, api_key: str, path: Path | None = None) -> Path:
     return credential_file
 
 
-def credential_status() -> dict[str, bool]:
-    return {provider: bool(os.getenv(name, "").strip()) for provider, name in PROVIDER_API_KEYS.items()}
-
-
-def delete_api_key(provider: str, path: Path | None = None) -> bool:
-    environment_name = PROVIDER_API_KEYS.get(provider.casefold())
-    if environment_name is None:
-        raise ValueError(f"Provider does not use an API key: {provider}")
-    existed = bool(os.getenv(environment_name))
-    os.environ.pop(environment_name, None)
-    credential_file = path or credentials_path()
-    if credential_file.is_file():
-        unset_key(str(credential_file), environment_name)
-    return existed
-
-
 __all__ = [
     "CLOUD_PROFILE_PROVIDERS",
     "PROVIDER_API_KEYS",
     "credentials_path",
-    "credential_status",
     "delete_profile_api_key",
-    "delete_api_key",
     "load_credentials",
     "load_profile_api_key",
     "profile_key_name",

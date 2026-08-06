@@ -3,254 +3,58 @@ from main import SessionSettings, handle_slash, parse_slash, verify_tool_compati
 
 
 class FakeConsole:
-    def __init__(self, choice: str = "", secret: str = "", model_choice: str = "") -> None:
+    def __init__(self, choice=""):
         self.choice = choice
-        self.model_choice = model_choice
-        self.secret_value = secret
-        self.secret_prompts: list[str] = []
-        self.messages: list[tuple[str, str]] = []
+        self.messages = []
 
-    def choose(self, title: str, _options: list[str], default: str | None = None) -> str:
-        if title == "Модель" and self.model_choice:
-            return self.model_choice
+    def choose(self, _title, _options, default=None):
         return self.choice or default or ""
 
-    def secret(self, label: str) -> str:
-        self.secret_prompts.append(label)
-        return self.secret_value
-
-    def input(self, _label: str) -> str:
-        return self.model_choice
-
-    def __getattr__(self, name: str):
-        def record(message: str, *_args) -> None:
+    def __getattr__(self, name):
+        def record(message, *_args):
             self.messages.append((name, message))
 
         return record
 
 
 class FakeSession:
-    def clear(self) -> None:
+    def clear(self):
         pass
 
 
 def test_parse_slash_command_and_value():
-    assert parse_slash("/provider openai") == ("provider", "openai")
+    assert parse_slash("/config openai-work") == ("config", "openai-work")
     assert parse_slash("  /MODE agent  ") == ("mode", "agent")
     assert parse_slash("ordinary prompt") is None
 
 
-def test_local_edition_blocks_cloud_configuration_commands():
+def test_removed_configuration_commands_are_unknown():
     console = FakeConsole()
-    settings = SessionSettings(
-        provider="local",
-        model="qwen2.5-coder-1.5b-instruct-q4_k_m",
-        local_only=True,
-    )
+    settings = SessionSettings()
 
     for command in ("keys", "provider", "model"):
         client = object()
         returned, should_exit = handle_slash(
-            (command, ""),
-            settings,
-            console,
-            FakeSession(),
-            client,
+            (command, ""), settings, console, FakeSession(), client
         )
         assert returned is client
         assert should_exit is False
 
-    assert all(kind == "error" for kind, _message in console.messages)
-    assert all("локальной версии" in message for _kind, message in console.messages)
-
-
-def test_provider_command_resets_model_and_client(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "configured")
-    settings = SessionSettings(provider="nvidia", model="custom")
-    console = FakeConsole(model_choice="gpt-5.6")
-    client, should_exit = handle_slash(("provider", "openai"), settings, console, FakeSession(), object())
-    assert client is None
-    assert should_exit is False
-    assert settings.provider == "openai"
-    assert settings.model == "gpt-5.6"
-    assert console.secret_prompts == []
-
-
-def test_provider_command_can_use_interactive_choice(monkeypatch):
-    monkeypatch.setattr("main.provider_models", lambda _provider: ["qwen2.5:3b"])
-    settings = SessionSettings()
-    console = FakeConsole(choice="ollama", model_choice="qwen2.5:3b")
-    handle_slash(("provider", ""), settings, console, FakeSession(), None)
-    assert settings.provider == "ollama"
-    assert settings.model == "qwen2.5:3b"
-
-
-def test_ollama_model_menu_uses_installed_models(monkeypatch):
-    monkeypatch.setattr(
-        "main.provider_models",
-        lambda _provider: ["qwen2.5:3b", "qwen2.5-coder:1.5b"],
-    )
-    settings = SessionSettings(provider="ollama")
-    console = FakeConsole(choice="qwen2.5-coder:1.5b")
-
-    client, _ = handle_slash(("model", ""), settings, console, FakeSession(), object())
-
-    assert settings.model == "qwen2.5-coder:1.5b"
-    assert client is None
-
-
-def test_model_command_rejects_model_from_another_provider(monkeypatch):
-    settings = SessionSettings(provider="ollama", model="qwen2.5:3b")
-    monkeypatch.setattr("main.provider_models", lambda _provider: ["qwen2.5:3b"])
-    console = FakeConsole()
-    current_client = object()
-
-    client, _ = handle_slash(
-        ("model", "meta/llama-3.1-8b-instruct"),
-        settings,
-        console,
-        FakeSession(),
-        current_client,
-    )
-
-    assert settings.model == "qwen2.5:3b"
-    assert client is current_client
-    assert any(level == "error" and "недоступна" in message for level, message in console.messages)
-
-
-def test_model_command_automatically_switches_cloud_provider(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
-    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key")
-
-    def validate(provider, model, _key):
-        if (provider, model) != ("nvidia", "google/diffusiongemma-26b-a4b-it"):
-            raise ValueError("model unavailable")
-
-    monkeypatch.setattr("main.validate_provider_model_access", validate)
-    saved_preferences = []
-    monkeypatch.setattr("main.save_preferences", saved_preferences.append)
-    settings = SessionSettings(provider="openai", model="gpt-5-nano")
-    console = FakeConsole()
-
-    client, _ = handle_slash(
-        ("model", "google/diffusiongemma-26b-a4b-it"),
-        settings,
-        console,
-        FakeSession(),
-        object(),
-    )
-
-    assert client is None
-    assert settings.provider == "nvidia"
-    assert settings.model == "google/diffusiongemma-26b-a4b-it"
-    assert saved_preferences[0].provider == "nvidia"
-    assert saved_preferences[0].models["nvidia"] == "google/diffusiongemma-26b-a4b-it"
-    assert any("автоматически" in message for _level, message in console.messages)
-
-
-def test_provider_command_prompts_for_missing_api_key(monkeypatch):
-    saved: list[tuple[str, str]] = []
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
-    settings = SessionSettings(provider="nvidia")
-
-    client, _ = handle_slash(
-        ("provider", "openai"),
-        settings,
-        FakeConsole(secret="secret-value", model_choice="gpt-5.6"),
-        FakeSession(),
-        object(),
-    )
-
-    assert saved == [("openai", "secret-value")]
-    assert settings.provider == "openai"
-    assert client is None
-
-
-def test_provider_command_reuses_saved_api_key(monkeypatch):
-    saved: list[tuple[str, str]] = []
-    monkeypatch.setenv("OPENAI_API_KEY", "old-key")
-    monkeypatch.setattr("main.save_api_key", lambda provider, key: saved.append((provider, key)))
-    settings = SessionSettings(provider="nvidia")
-
-    handle_slash(
-        ("provider", "openai"),
-        settings,
-        FakeConsole(secret="new-key", model_choice="gpt-5.6"),
-        FakeSession(),
-        object(),
-    )
-
-    assert saved == []
-    assert settings.provider == "openai"
-
-
-def test_provider_command_rejects_invalid_nvidia_key(monkeypatch):
-    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-    settings = SessionSettings(provider="openai")
-    console = FakeConsole(secret="wrong-key")
-
-    client, _ = handle_slash(
-        ("provider", "nvidia"), settings, console, FakeSession(), object()
-    )
-
-    assert settings.provider == "openai"
-    assert client is not None
-    assert any("nvapi-" in message for level, message in console.messages if level == "error")
-
-
-def test_provider_command_keeps_current_provider_when_key_is_empty(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    settings = SessionSettings(provider="nvidia")
-
-    client, _ = handle_slash(
-        ("provider", "openai"), settings, FakeConsole(secret=""), FakeSession(), object()
-    )
-
-    assert settings.provider == "nvidia"
-    assert client is not None
-
-
-def test_provider_command_keeps_current_provider_when_key_cannot_be_saved(monkeypatch):
-    def fail_save(_provider, _key):
-        raise OSError("denied")
-
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("main.save_api_key", fail_save)
-    settings = SessionSettings(provider="nvidia")
-
-    client, _ = handle_slash(
-        ("provider", "openai"), settings, FakeConsole(secret="secret"), FakeSession(), object()
-    )
-
-    assert settings.provider == "nvidia"
-    assert client is not None
-
-
-def test_ollama_allows_agent_mode(monkeypatch):
-    monkeypatch.setattr("main.verify_tool_compatibility", lambda _settings, _console: True)
-    settings = SessionSettings(provider="ollama")
-    console = FakeConsole()
-    handle_slash(("mode", "agent"), settings, console, FakeSession(), None)
-    assert settings.agent is True
+    assert all(level == "error" for level, _message in console.messages)
 
 
 def test_mode_change_resets_client_to_rebuild_optimized_prompt():
     settings = SessionSettings(provider="ollama", model="model")
 
     client, _ = handle_slash(
-        ("mode", "chat"),
-        settings,
-        FakeConsole(),
-        FakeSession(),
-        object(),
+        ("mode", "chat"), settings, FakeConsole(), FakeSession(), object()
     )
 
     assert client is None
 
 
-def test_ollama_rejects_agent_mode_when_model_is_incompatible(monkeypatch):
-    monkeypatch.setattr("main.verify_tool_compatibility", lambda _settings, _console: False)
+def test_agent_mode_requires_native_tool_support(monkeypatch):
+    monkeypatch.setattr("main.verify_tool_compatibility", lambda *_args: False)
     settings = SessionSettings(provider="ollama", model="weak-model")
 
     handle_slash(("mode", "agent"), settings, FakeConsole(), FakeSession(), None)
@@ -258,26 +62,30 @@ def test_ollama_rejects_agent_mode_when_model_is_incompatible(monkeypatch):
     assert settings.agent is False
 
 
-def test_cloud_agent_mode_requires_native_tool_support(monkeypatch):
-    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-key")
+def test_cloud_agent_mode_uses_profile_key(monkeypatch):
+    received = []
     monkeypatch.setattr(
         "main.probe_cloud_tool_support",
-        lambda *_args: ToolCompatibility.UNRELIABLE,
+        lambda *args: received.append(args) or ToolCompatibility.SUPPORTED,
     )
-    settings = SessionSettings(provider="nvidia", model="weak-model")
+    settings = SessionSettings(
+        provider="nvidia",
+        model="tool-model",
+        api_key="profile-key",
+    )
 
-    assert verify_tool_compatibility(settings, FakeConsole()) is False
-    assert settings.tool_compatibility == "unreliable"
+    assert verify_tool_compatibility(settings, FakeConsole()) is True
+    assert received == [("nvidia", "tool-model", "profile-key")]
 
 
-def test_permissions_command_changes_policy():
+def test_permissions_command_changes_session_policy():
     settings = SessionSettings()
-    console = FakeConsole()
-    handle_slash(("permissions", "auto"), settings, console, FakeSession(), None)
+    handle_slash(("permissions", "auto"), settings, FakeConsole(), FakeSession(), None)
     assert settings.auto_approve is True
 
 
-def test_project_command_changes_working_root_and_resets_client(tmp_path):
+def test_project_command_changes_working_root_and_resets_client(tmp_path, monkeypatch):
+    monkeypatch.setattr("main.save_preferences", lambda _preferences: None)
     settings = SessionSettings(project_root="C:/old-project")
 
     client, should_exit = handle_slash(
@@ -291,30 +99,15 @@ def test_project_command_changes_working_root_and_resets_client(tmp_path):
 
 def test_project_command_rejects_missing_directory(tmp_path):
     settings = SessionSettings(project_root="C:/old-project")
-    client_instance = object()
+    current_client = object()
 
     client, _ = handle_slash(
         ("project", str(tmp_path / "missing")),
         settings,
         FakeConsole(),
         FakeSession(),
-        client_instance,
+        current_client,
     )
 
     assert settings.project_root == "C:/old-project"
-    assert client is client_instance
-
-
-def test_replacing_active_provider_key_resets_client_and_cached_check(monkeypatch):
-    monkeypatch.setattr("main.configure_provider_key", lambda *_args, **_kwargs: True)
-    cleared: list[str] = []
-    monkeypatch.setattr("main.rate_limit_monitor.clear", cleared.append)
-    settings = SessionSettings(provider="openai")
-    console = FakeConsole(choice="openai")
-
-    choices = iter(["openai", "Заменить"])
-    console.choose = lambda _title, _options: next(choices)
-    client, _ = handle_slash(("keys", ""), settings, console, FakeSession(), object())
-
-    assert client is None
-    assert cleared == ["openai"]
+    assert client is current_client

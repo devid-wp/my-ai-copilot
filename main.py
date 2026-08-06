@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -23,6 +23,7 @@ from core.agent_loop import (
     tool_path_key,
     unresolved_tool_failures,
 )
+from core.config_commands import handle_config_command
 from core.config_profiles import (
     ConfigProfile,
     create_profile_id,
@@ -30,28 +31,23 @@ from core.config_profiles import (
     load_profile_store,
     save_profile_store,
     set_active_profile,
+    validate_profile,
 )
 from core.config_wizard import create_profile_interactively
 from core.console import Console
 from core.context_manager import get_git_log, get_project_context, get_project_instructions
-from core.credential_probe import probe_provider_key, validate_provider_model_access
 from core.credentials import (
     PROVIDER_API_KEYS,
-    credential_status,
-    delete_api_key,
     load_credentials,
     load_profile_api_key,
-    save_api_key,
-    validate_api_key,
 )
 from core.diagnostics import SessionDiagnostics
 from core.doctor import collect_doctor_checks
 from core.local_runtime import LOCAL_MODEL_ID, local_server_online
 from core.memory import AgentMemory
-from core.preferences import UserPreferences, load_preferences, save_preferences
+from core.preferences import load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_runtime import explain_provider_error, provider_name
-from core.rate_limits import rate_limit_monitor
 from core.tool_compatibility import ToolCompatibility, probe_cloud_tool_support
 from core.tool_protocol import normalize_tool_call
 from core.tools import AgentLimits, ToolResult, ToolStatus
@@ -166,65 +162,6 @@ def provider_models(provider: str) -> list[str]:
     return models
 
 
-def validate_provider_model(provider: str, model: str) -> list[str]:
-    """Reject model IDs that are unavailable through the active provider."""
-    if provider in PROVIDER_API_KEYS:
-        if not model.strip():
-            raise ValueError("Имя модели не может быть пустым.")
-        return [model.strip()]
-    models = provider_models(provider)
-    if model not in models:
-        raise ValueError(
-            f"Модель '{model}' недоступна для провайдера {provider.upper()}. "
-            "Используйте /model без аргумента, чтобы увидеть доступные модели."
-        )
-    return models
-
-
-def choose_model(provider: str, console: Console, preferred: str | None = None) -> str:
-    """Read cloud model IDs directly; show menus only for locally discoverable models."""
-    if provider in PROVIDER_API_KEYS:
-        suffix = f" (Enter = {preferred})" if preferred else ""
-        model = console.input(f"Имя модели{suffix}").strip() or (preferred or "")
-        validate_provider_model(provider, model)
-        return model
-    models = provider_models(provider)
-    return console.choose(
-        "Модель",
-        models,
-        default=preferred if preferred in models else models[0],
-    )
-
-
-def resolve_cloud_model_provider(current_provider: str, model: str) -> str:
-    """Find which configured cloud provider exposes a manually entered model ID."""
-    candidates = [current_provider, *(name for name in PROVIDER_API_KEYS if name != current_provider)]
-    configured = [name for name in candidates if os.getenv(PROVIDER_API_KEYS[name], "").strip()]
-    failed: list[str] = []
-    for provider in configured:
-        try:
-            validate_provider_model_access(
-                provider,
-                model,
-                os.getenv(PROVIDER_API_KEYS[provider], ""),
-            )
-        except ValueError:
-            continue
-        except Exception:
-            failed.append(provider.upper())
-            continue
-        return provider
-    if failed and len(failed) == len(configured):
-        raise RuntimeError(
-            "Не удалось автоматически проверить модель через API: " + ", ".join(failed)
-        )
-    names = ", ".join(name.upper() for name in configured) or "настроенных API"
-    raise ValueError(
-        f"Модель '{model}' не найдена у провайдеров: {names}. "
-        "Проверьте точное имя модели или настройте нужный ключ через /keys."
-    )
-
-
 def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bool:
     model = settings.display_model
     console.activity(f"Проверка native tools: {model}")
@@ -261,131 +198,6 @@ def verify_tool_compatibility(settings: SessionSettings, console: Console) -> bo
         f"Модель {model} печатает псевдовызовы вместо native tools. Выберите другую модель для agent-режима."
     )
     return False
-
-
-def configure_provider_key(
-    provider: str,
-    console: Console,
-    *,
-    allow_replacement: bool,
-) -> bool:
-    environment_name = PROVIDER_API_KEYS.get(provider)
-    if environment_name is None:
-        return True
-    saved_key = os.getenv(environment_name, "").strip()
-    if saved_key and not allow_replacement:
-        return True
-
-    label = f"{provider.upper()} API key"
-    if saved_key:
-        label += " (Enter = оставить сохранённый)"
-    entered_key = console.secret(label).strip()
-    if not entered_key and not saved_key:
-        console.error("API-ключ не введён.")
-        return False
-    api_key = entered_key or saved_key
-    try:
-        validate_api_key(provider, api_key)
-        if entered_key:
-            save_api_key(provider, api_key)
-    except ValueError as exc:
-        console.error(str(exc))
-        return False
-    except OSError as exc:
-        console.error(f"Не удалось сохранить API-ключ: {exc}")
-        return False
-    if entered_key:
-        console.success("API-ключ сохранён. Повторно вводить его не потребуется.")
-    return True
-
-
-def run_startup_setup(
-    settings: SessionSettings,
-    console: Console,
-    preferences: UserPreferences,
-) -> bool:
-    """Guide an interactive user through the minimum startup choices."""
-    mode = console.choose(
-        "Режим запуска",
-        ["agent", "chat"],
-        default=preferences.mode,
-    )
-    if mode == "agent":
-        permission_labels = {
-            "Спрашивать перед действиями": "ask",
-            "Автоподтверждение (полный доступ к рабочей папке)": "auto",
-        }
-        default_permission = next(
-            label
-            for label, permission in permission_labels.items()
-            if permission == ("auto" if settings.auto_approve else preferences.permissions)
-        )
-        permission_label = console.choose(
-            "Разрешения агента",
-            list(permission_labels),
-            default=default_permission,
-        )
-        settings.auto_approve = permission_labels[permission_label] == "auto"
-        preferences.permissions = settings.permissions
-    else:
-        settings.auto_approve = False
-    provider = console.choose(
-        "Провайдер",
-        list(PROVIDER_MODELS),
-        default=settings.provider,
-    )
-    if not configure_provider_key(provider, console, allow_replacement=False):
-        return False
-
-    preferred_model = preferences.models.get(provider)
-    if provider == settings.provider and settings.model:
-        preferred_model = settings.model
-    while True:
-        try:
-            model = choose_model(provider, console, preferred_model)
-            if provider == "nvidia":
-                validate_provider_model_access(
-                    provider,
-                    model,
-                    os.getenv(PROVIDER_API_KEYS[provider], ""),
-                )
-        except (RuntimeError, ValueError) as exc:
-            console.error(str(exc))
-            return False
-        settings.provider = provider
-        settings.model = model
-        settings.agent = mode == "agent"
-        settings.tool_compatibility = "unknown"
-        if not settings.agent or verify_tool_compatibility(settings, console):
-            break
-        preferred_model = None
-        console.warning("Введите другую модель для agent-режима.")
-
-    preferences.provider = settings.provider
-    preferences.mode = settings.mode
-    preferences.models[settings.provider] = settings.display_model
-    try:
-        save_preferences(preferences)
-    except OSError as exc:
-        console.warning(f"Не удалось сохранить настройки запуска: {exc}")
-    return True
-
-
-def choose_recent_project(console: Console, preferences: UserPreferences, current: str) -> str:
-    """Offer existing recent directories and fall back to a typed path."""
-    recent = [
-        current,
-        *(path for path in preferences.recent_projects if path != current and Path(path).is_dir()),
-    ]
-    labels = [f"{Path(path).name} — {path}" for path in recent[:3]]
-    other = "Выбрать другую папку"
-    selected = console.choose("Рабочая папка", [*labels, other], default=labels[0])
-    candidate = console.input("Путь к папке").strip() if selected == other else recent[labels.index(selected)]
-    target = Path(candidate).expanduser().resolve()
-    if not target.is_dir():
-        console.error(f"Папка не найдена: {target}")
-        return current
-    return str(target)
 
 
 def session_diagnostics(
@@ -465,9 +277,6 @@ def handle_slash(
     client: Any | None,
 ) -> tuple[Any | None, bool]:
     command, value = parsed
-    if settings.local_only and command in {"keys", "provider", "model"}:
-        console.error(f"/{command} недоступна в полностью локальной версии Citadex.")
-        return client, False
     if command in {"exit", "quit"}:
         return client, True
     if command == "help":
@@ -502,57 +311,6 @@ def handle_slash(
         passed = sum(check.ok for check in checks)
         console.activity(f"Doctor: {passed}/{len(checks)} проверок пройдено")
         return client, False
-    if command == "keys":
-        statuses = credential_status()
-        summary = ", ".join(
-            f"{name}: {'настроен' if ready else 'не настроен'}" for name, ready in statuses.items()
-        )
-        console.activity(f"API-ключи: {summary}")
-        provider = console.choose("Провайдер ключа", list(PROVIDER_API_KEYS))
-        console.activity(f"Лимиты {provider}: {rate_limit_monitor.describe(provider)}")
-        action = console.choose("Действие", ["Проверить", "Заменить", "Удалить", "Отмена"])
-        if action == "Заменить":
-            if configure_provider_key(provider, console, allow_replacement=True):
-                rate_limit_monitor.clear(provider)
-                if provider == settings.provider:
-                    client = None
-        elif action == "Удалить":
-            delete_api_key(provider)
-            rate_limit_monitor.clear(provider)
-            if provider == settings.provider:
-                client = None
-            console.success(f"Ключ {provider.upper()} удалён")
-        elif action == "Проверить":
-            if not rate_limit_monitor.can_check(provider):
-                console.warning(
-                    "Лимиты API обновляются раз в минуту. "
-                    f"Следующая проверка через {rate_limit_monitor.seconds_until_refresh(provider)} сек."
-                )
-                return client, False
-            try:
-                environment_name = PROVIDER_API_KEYS[provider]
-                console.activity(f"Проверка ключа {provider.upper()}…")
-                started = perf_counter()
-                probe_provider_key(provider, os.getenv(environment_name, ""))
-            except Exception as exc:
-                snapshot = rate_limit_monitor.record_error(provider, exc)
-                if snapshot.limited:
-                    console.warning(
-                        "Лимит запросов исчерпан. Состояние автоматически станет доступно "
-                        "для новой проверки через 60 секунд."
-                    )
-                else:
-                    console.error(
-                        "Проверка ключа не пройдена: "
-                        + explain_provider_error(exc, provider.upper())
-                    )
-            else:
-                rate_limit_monitor.record_success(provider)
-                console.success(
-                    f"Ключ {provider.upper()} работает · проверено за "
-                    f"{perf_counter() - started:.1f} с"
-                )
-        return client, False
     if command == "undo":
         try:
             result = undo_last_action(settings.project_root)
@@ -581,70 +339,6 @@ def handle_slash(
         with suppress(OSError):
             save_preferences(preferences)
         console.success(f"Рабочая папка: {target}")
-        return None, False
-    if command == "provider":
-        provider = value.casefold() if value else console.choose("Провайдер", list(PROVIDER_MODELS))
-        if provider not in PROVIDER_MODELS:
-            console.error(f"Неизвестный провайдер: {provider}")
-            return client, False
-        if not configure_provider_key(provider, console, allow_replacement=False):
-            console.error("Провайдер не изменён.")
-            return client, False
-        try:
-            model = choose_model(provider, console)
-            if provider == "nvidia":
-                validate_provider_model_access(
-                    provider,
-                    model,
-                    os.getenv(PROVIDER_API_KEYS[provider], ""),
-                )
-        except (RuntimeError, ValueError) as exc:
-            console.error(str(exc))
-            return client, False
-        settings.provider = provider
-        settings.model = model
-        settings.tool_compatibility = "unknown"
-        if settings.agent and not verify_tool_compatibility(settings, console):
-            settings.agent = False
-            console.warning("Режим переключён на chat.")
-        console.success(f"Провайдер: {provider} · Модель: {model}")
-        return None, False
-    if command == "model":
-        if value:
-            model = value
-        else:
-            try:
-                model = choose_model(settings.provider, console, settings.model)
-            except (RuntimeError, ValueError) as exc:
-                console.error(str(exc))
-                return client, False
-        previous_provider = settings.provider
-        try:
-            if settings.provider in PROVIDER_API_KEYS:
-                settings.provider = resolve_cloud_model_provider(settings.provider, model)
-            else:
-                validate_provider_model(settings.provider, model)
-        except (RuntimeError, ValueError) as exc:
-            settings.provider = previous_provider
-            console.error(str(exc))
-            return client, False
-        settings.model = model
-        if settings.provider != previous_provider:
-            preferences = load_preferences()
-            preferences.provider = settings.provider
-            preferences.models[settings.provider] = model
-            with suppress(OSError):
-                save_preferences(preferences)
-        settings.tool_compatibility = "unknown"
-        if settings.agent and not verify_tool_compatibility(settings, console):
-            settings.agent = False
-            console.warning("Режим переключён на chat.")
-        if settings.provider != previous_provider:
-            console.success(
-                f"Провайдер автоматически изменён: {settings.provider} · Модель: {model}"
-            )
-        else:
-            console.success(f"Модель: {model}")
         return None, False
     if command == "mode":
         mode = value.casefold() if value else console.choose("Режим", ["chat", "agent"])
@@ -679,52 +373,41 @@ def handle_slash(
     return client, False
 
 
-def create_client(
-    provider: str,
-    model: str | None,
-    system_prompt: str,
-    api_key: str = "",
-):
-    provider = provider.lower()
+def create_client(profile: ConfigProfile, api_key: str, system_prompt: str):
+    """Build a provider client exclusively from one validated profile and its key."""
+    profile = validate_profile(profile)
+    provider = profile.provider
     if provider == "nvidia":
         from core.llm_client import NVIDIAClient
 
-        key = api_key or os.getenv("NVIDIA_API_KEY", "")
-        if not key:
-            raise ValueError("NVIDIA_API_KEY не задан. Добавьте его в .env или окружение.")
-        selected_model = model or env("NVIDIA_MODEL", PROVIDER_MODELS["nvidia"][0])
         return NVIDIAClient(
-            key,
+            api_key,
             system_prompt,
-            model_chat=selected_model,
-            model_code=selected_model,
+            model_chat=profile.model,
+            model_code=profile.model,
         )
     if provider == "openai":
         from core.llm_client import OpenAIClient
 
-        key = api_key or os.getenv("OPENAI_API_KEY", "")
-        if not key:
-            raise ValueError("OPENAI_API_KEY не задан. Добавьте его в .env или окружение.")
-        selected_model = model or env("OPENAI_MODEL", PROVIDER_MODELS["openai"][0])
         return OpenAIClient(
-            key,
+            api_key,
             system_prompt,
-            model_chat=selected_model,
-            model_code=selected_model,
+            model_chat=profile.model,
+            model_code=profile.model,
         )
     if provider == "ollama":
         from core.ollama_client import OllamaClient
 
         return OllamaClient(
             system_prompt,
-            model_chat=model or env("OLLAMA_MODEL_CHAT", "llama3.2"),
-            model_code=model or env("OLLAMA_MODEL_CODE", "qwen2.5-coder"),
-            base_url=env("OLLAMA_BASE_URL", "http://localhost:11434"),
+            model_chat=profile.model,
+            model_code=profile.model,
+            base_url="http://localhost:11434",
         )
     if provider == "local":
         from core.local_client import LocalClient
 
-        return LocalClient(system_prompt, model=model or LOCAL_MODEL_ID)
+        return LocalClient(system_prompt, model=profile.model)
     raise ValueError(f"Неизвестный провайдер: {provider}")
 
 
@@ -1001,6 +684,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_id = active_profile_id
 
     settings = settings_from_profile(active_profile, load_profile_api_key(profile_id))
+    runtime_profile = active_profile
     # These flags are session-only overrides for non-interactive automation.
     if args.provider:
         settings.provider = args.provider
@@ -1009,6 +693,14 @@ def main(argv: list[str] | None = None) -> int:
             settings.api_key = os.getenv(key_name, "") if key_name else ""
     if args.model:
         settings.model = args.model
+    if args.provider or args.model:
+        runtime_profile = validate_profile(
+            replace(
+                active_profile,
+                provider=settings.provider,
+                model=settings.display_model,
+            )
+        )
     if args.agent:
         settings.agent = True
     if args.yes:
@@ -1027,9 +719,9 @@ def main(argv: list[str] | None = None) -> int:
     approved_external_paths: set[str] = set()
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
     if args.local_only:
-        console.hint("/project · /mode · /permissions · /undo · /status · /help")
+        console.hint("/config · /project · /mode · /permissions · /status · /help")
     else:
-        console.hint("/project · /provider · /model · /mode · /permissions · /help")
+        console.hint("/config · /project · /mode · /permissions · /status · /help")
     if settings.auto_approve:
         console.warning("Автоподтверждение включено: агент может изменять файлы и запускать команды.")
 
@@ -1037,15 +729,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             console.activity(f"Анализ рабочей папки: {settings.project_root}")
             client = create_client(
-                settings.provider,
-                settings.model,
+                runtime_profile,
+                settings.api_key,
                 build_client_system_prompt(
                     settings.project_root,
                     args.user,
                     session,
                     agent=settings.agent,
                 ),
-                settings.api_key,
             )
             if settings.agent:
                 run_agent(
@@ -1079,6 +770,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         slash = parse_slash(prompt)
         if slash is not None:
+            if slash[0] == "config":
+                previous_project_root = settings.project_root
+                client = handle_config_command(
+                    slash[1],
+                    profile_store,
+                    settings,
+                    console,
+                    client,
+                )
+                selected_profile = get_active_profile(profile_store)
+                if selected_profile is not None:
+                    runtime_profile = selected_profile
+                if settings.project_root != previous_project_root:
+                    session = AgentMemory(
+                        str(Path(settings.project_root) / "logs" / "session.json"),
+                        args.user,
+                    )
+                continue
             client, should_exit = handle_slash(slash, settings, console, session, client)
             if should_exit:
                 console.goodbye()
@@ -1090,15 +799,14 @@ def main(argv: list[str] | None = None) -> int:
             if client is None:
                 console.activity(f"Анализ рабочей папки: {settings.project_root}")
                 client = create_client(
-                    settings.provider,
-                    settings.model,
+                    runtime_profile,
+                    settings.api_key,
                     build_client_system_prompt(
                         settings.project_root,
                         args.user,
                         session,
                         agent=settings.agent,
                     ),
-                    settings.api_key,
                 )
             if settings.agent:
                 run_agent(
