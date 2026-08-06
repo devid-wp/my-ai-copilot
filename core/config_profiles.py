@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import unicodedata
 from collections.abc import Iterable
 from contextlib import suppress
@@ -17,6 +18,12 @@ PROFILE_STORE_VERSION = 2
 SUPPORTED_PROVIDERS = {"nvidia", "openai", "ollama", "local"}
 SUPPORTED_MODES = {"chat", "agent"}
 SUPPORTED_PERMISSIONS = {"ask", "auto"}
+LEGACY_DEFAULT_MODELS = {
+    "nvidia": "meta/llama-3.1-8b-instruct",
+    "openai": "gpt-5.6",
+    "ollama": "llama3.2",
+    "local": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +117,8 @@ def load_profile_store(path: Path | None = None) -> ProfileStore:
     if not isinstance(payload, dict):
         raise ValueError("profile store must be a JSON object")
     version = payload.get("version")
+    if version in {None, 1} and "profiles" not in payload:
+        return _migrate_legacy_store(target, payload)
     if version != PROFILE_STORE_VERSION:
         raise ValueError(f"unsupported profile store version: {version}")
     raw_profiles = payload.get("profiles", {})
@@ -131,6 +140,56 @@ def load_profile_store(path: Path | None = None) -> ProfileStore:
         recent_projects=list(recent),
     )
     return _validate_store(store)
+
+
+def _migrate_legacy_store(target: Path, payload: dict[str, Any]) -> ProfileStore:
+    """Migrate the former flat preferences document exactly once."""
+    provider = str(payload.get("provider", "nvidia")).casefold()
+    if provider not in SUPPORTED_PROVIDERS:
+        provider = "nvidia"
+    raw_models = payload.get("models")
+    models = raw_models if isinstance(raw_models, dict) else {}
+    model = str(models.get(provider) or LEGACY_DEFAULT_MODELS[provider]).strip()
+    mode = str(payload.get("mode", "chat"))
+    if mode not in SUPPORTED_MODES:
+        mode = "chat"
+    permissions = str(payload.get("permissions", "ask"))
+    if permissions not in SUPPORTED_PERMISSIONS:
+        permissions = "ask"
+    candidate_root = Path(str(payload.get("project_root", ""))).expanduser()
+    project_root = candidate_root.resolve() if candidate_root.is_dir() else Path.cwd().resolve()
+    profile_id = "migrated-profile"
+    profile = validate_profile(
+        ConfigProfile(
+            name="Migrated profile",
+            provider=provider,
+            model=model,
+            mode=mode,
+            permissions=permissions,
+            project_root=str(project_root),
+        )
+    )
+    store = ProfileStore(
+        active_profile=profile_id,
+        profiles={profile_id: profile},
+        recent_projects=[
+            str(item)
+            for item in payload.get("recent_projects", [])
+            if isinstance(item, str)
+        ][:5],
+    )
+
+    backup = target.with_name("config.v1.backup.json")
+    if not backup.exists():
+        shutil.copy2(target, backup)
+
+    from core.credentials import delete_legacy_provider_key, migrate_legacy_provider_key
+
+    key_migrated = migrate_legacy_provider_key(profile_id, provider)
+    save_profile_store(store, target)
+    if key_migrated:
+        delete_legacy_provider_key(provider)
+    return store
 
 
 def save_profile_store(store: ProfileStore, path: Path | None = None) -> Path:

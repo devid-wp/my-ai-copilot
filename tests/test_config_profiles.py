@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import asdict
 
 import pytest
@@ -14,6 +15,7 @@ from core.config_profiles import (
     set_active_profile,
     validate_profile,
 )
+from core.credentials import load_profile_api_key
 
 
 def profile(tmp_path, *, name="NVIDIA Fast", provider="nvidia"):
@@ -103,3 +105,42 @@ def test_unknown_profile_operations_are_rejected():
         set_active_profile(store, "missing")
     with pytest.raises(KeyError, match="missing"):
         delete_profile(store, "missing")
+
+
+def test_legacy_preferences_are_migrated_once_with_active_key(tmp_path, monkeypatch):
+    target = tmp_path / "config.json"
+    monkeypatch.setenv("CITADEX_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-openai-key")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-inactive-key")
+    target.write_text(
+        json.dumps(
+            {
+                "provider": "openai",
+                "models": {"openai": "gpt-legacy"},
+                "mode": "agent",
+                "permissions": "auto",
+                "project_root": str(tmp_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    migrated = load_profile_store(target)
+    repeated = load_profile_store(target)
+
+    assert migrated == repeated
+    assert migrated.active_profile == "migrated-profile"
+    profile = migrated.profiles["migrated-profile"]
+    assert (profile.provider, profile.model, profile.mode, profile.permissions) == (
+        "openai",
+        "gpt-legacy",
+        "agent",
+        "auto",
+    )
+    assert load_profile_api_key("migrated-profile") == "legacy-openai-key"
+    assert "OPENAI_API_KEY" not in os.environ
+    assert os.environ["NVIDIA_API_KEY"] == "nvapi-inactive-key"
+    assert json.loads((tmp_path / "config.v1.backup.json").read_text(encoding="utf-8"))[
+        "provider"
+    ] == "openai"
+    assert len(repeated.profiles) == 1

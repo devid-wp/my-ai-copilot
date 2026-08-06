@@ -92,6 +92,41 @@ def load_profile_api_key(profile_id: str, path: Path | None = None) -> str:
     return str(value).strip() if value else ""
 
 
+def migrate_legacy_provider_key(
+    profile_id: str,
+    provider: str,
+    path: Path | None = None,
+) -> bool:
+    """Copy one active legacy provider key into profile storage without deleting it."""
+    environment_name = PROVIDER_API_KEYS.get(provider.casefold())
+    if environment_name is None:
+        return False
+    credential_file = path or credentials_path()
+    value = os.getenv(environment_name, "").strip()
+    if not value and credential_file.is_file():
+        saved = dotenv_values(credential_file).get(environment_name)
+        value = str(saved).strip() if saved else ""
+    if not value:
+        return False
+    save_profile_api_key(profile_id, provider, value, credential_file)
+    return True
+
+
+def delete_legacy_provider_key(provider: str, path: Path | None = None) -> bool:
+    """Remove a migrated provider-scoped key after profile storage is durable."""
+    environment_name = PROVIDER_API_KEYS.get(provider.casefold())
+    if environment_name is None:
+        return False
+    credential_file = path or credentials_path()
+    existed = bool(os.getenv(environment_name, ""))
+    os.environ.pop(environment_name, None)
+    if credential_file.is_file():
+        values = dotenv_values(credential_file)
+        existed = existed or bool(values.get(environment_name))
+        unset_key(str(credential_file), environment_name)
+    return existed
+
+
 def delete_profile_api_key(profile_id: str, path: Path | None = None) -> bool:
     """Delete one profile credential without returning or logging its value."""
     environment_name = profile_key_name(profile_id)
@@ -126,9 +161,11 @@ __all__ = [
     "CLOUD_PROFILE_PROVIDERS",
     "PROVIDER_API_KEYS",
     "credentials_path",
+    "delete_legacy_provider_key",
     "delete_profile_api_key",
     "load_credentials",
     "load_profile_api_key",
+    "migrate_legacy_provider_key",
     "profile_key_name",
     "save_api_key",
     "save_profile_api_key",
