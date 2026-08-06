@@ -12,7 +12,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-from core.preferences import UserPreferences, save_preferences
+from core.config_profiles import ConfigProfile, save_active_profile
 
 DEFAULT_LOCAL_MODEL = "qwen2.5-coder:1.5b"
 OLLAMA_API = "http://127.0.0.1:11434"
@@ -102,15 +102,16 @@ def pull_model(executable: str, model: str = DEFAULT_LOCAL_MODEL) -> None:
 
 
 def configure_local_defaults(model: str = DEFAULT_LOCAL_MODEL) -> None:
-    save_preferences(
-        UserPreferences(
+    save_active_profile(
+        "ollama-local",
+        ConfigProfile(
+            name="Ollama Local",
             provider="ollama",
+            model=model,
             mode="agent",
             permissions="ask",
-            models={"ollama": model},
             project_root=str(Path.cwd().resolve()),
-            recent_projects=[str(Path.cwd().resolve())],
-        )
+        ),
     )
 
 

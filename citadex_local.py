@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from core.config_profiles import ConfigProfile, save_active_profile
 from core.local_runtime import (
     LOCAL_MODEL_ID,
     start_local_server,
@@ -19,17 +20,23 @@ def run(argv: list[str] | None = None) -> int:
     process = None
     try:
         process = start_local_server()
+        save_active_profile(
+            "bundled-local",
+            ConfigProfile(
+                name="Bundled Local",
+                provider="local",
+                model=LOCAL_MODEL_ID,
+                mode="agent",
+                permissions="ask",
+                project_root=str(Path.cwd().resolve()),
+            ),
+        )
         return citadex_main(
             [
                 *(sys.argv[1:] if argv is None else argv),
                 "--project",
                 str(Path.cwd()),
-                "--provider",
-                "local",
-                "--model",
-                LOCAL_MODEL_ID,
                 "--agent",
-                "--skip-setup",
                 "--local-only",
             ]
         )

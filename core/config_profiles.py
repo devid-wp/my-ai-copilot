@@ -234,6 +234,19 @@ def set_active_profile(store: ProfileStore, profile_id: str) -> ConfigProfile:
     return profile
 
 
+def save_active_profile(
+    profile_id: str,
+    profile: ConfigProfile,
+    path: Path | None = None,
+) -> ProfileStore:
+    """Upsert a validated launcher-created profile and make it active."""
+    store = load_profile_store(path)
+    store.profiles[profile_id] = validate_profile(profile)
+    store.active_profile = profile_id
+    save_profile_store(store, path)
+    return store
+
+
 def delete_profile(store: ProfileStore, profile_id: str) -> ConfigProfile:
     try:
         profile = store.profiles.pop(profile_id)
@@ -253,6 +266,7 @@ __all__ = [
     "get_active_profile",
     "load_profile_store",
     "save_profile_store",
+    "save_active_profile",
     "set_active_profile",
     "validate_profile",
 ]

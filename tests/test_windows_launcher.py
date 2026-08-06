@@ -7,6 +7,6 @@ def test_windows_launcher_bootstraps_and_starts_agent(monkeypatch, tmp_path):
     received = []
     monkeypatch.setattr(citadex_windows, "citadex_main", lambda args: received.extend(args) or 0)
     assert citadex_windows.run() == 0
-    assert received[received.index("--model") + 1] == "model:1.5b"
+    assert "--provider" not in received
+    assert "--model" not in received
     assert "--agent" in received
-    assert "--skip-setup" in received

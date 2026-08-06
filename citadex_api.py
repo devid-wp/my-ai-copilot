@@ -8,8 +8,13 @@ from getpass import getpass
 from pathlib import Path
 from typing import Any
 
-from core.credentials import PROVIDER_API_KEYS, save_api_key, validate_api_key
-from core.preferences import UserPreferences, save_preferences
+from core.config_profiles import ConfigProfile, save_active_profile
+from core.credentials import (
+    PROVIDER_API_KEYS,
+    load_profile_api_key,
+    save_profile_api_key,
+    validate_api_key,
+)
 from core.tool_smoke import check_native_tool_calling
 from main import main as citadex_main
 
@@ -42,17 +47,19 @@ def configure_api(provider: str, api_key: str, model: str) -> str:
         raise ValueError("Имя модели не может быть пустым.")
     client = create_api_client(provider, key, model)
     check_native_tool_calling(client)
-    save_api_key(provider, key)
     project = str(Path.cwd().resolve())
-    save_preferences(
-        UserPreferences(
+    profile_id = f"{provider}-api"
+    save_profile_api_key(profile_id, provider, key)
+    save_active_profile(
+        profile_id,
+        ConfigProfile(
+            name=f"{provider.upper()} API",
             provider=provider,
+            model=model,
             mode="agent",
             permissions="ask",
-            models={provider: model},
             project_root=project,
-            recent_projects=[project],
-        )
+        ),
     )
     return model
 
@@ -61,7 +68,7 @@ def run() -> int:
     print("\nCITADEX · простая настройка API\n")
     provider = choose_provider()
     environment_name = PROVIDER_API_KEYS[provider]
-    existing = os.getenv(environment_name, "").strip()
+    existing = load_profile_api_key(f"{provider}-api") or os.getenv(environment_name, "").strip()
     label = f"Вставьте {provider.upper()} API-ключ (он будет скрыт)"
     if existing:
         label += " или нажмите Enter, чтобы проверить сохранённый"
@@ -85,12 +92,7 @@ def run() -> int:
         [
             "--project",
             str(Path.cwd()),
-            "--provider",
-            provider,
-            "--model",
-            model,
             "--agent",
-            "--skip-setup",
         ]
     )
 

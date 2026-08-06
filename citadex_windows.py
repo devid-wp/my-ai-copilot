@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from core.windows_setup import DEFAULT_LOCAL_MODEL, bootstrap_local_model
+from core.windows_setup import bootstrap_local_model
 from main import main as citadex_main
 
 
@@ -17,7 +17,7 @@ def confirm(question: str) -> bool:
 def run() -> int:
     print("\nCITADEX · локальный AI-помощник\n")
     try:
-        model = bootstrap_local_model(confirm)
+        bootstrap_local_model(confirm)
     except (OSError, RuntimeError) as exc:
         print(f"\nОшибка настройки: {exc}", file=sys.stderr)
         if getattr(sys, "frozen", False):
@@ -27,12 +27,7 @@ def run() -> int:
         [
             "--project",
             str(Path.cwd()),
-            "--provider",
-            "ollama",
-            "--model",
-            model or DEFAULT_LOCAL_MODEL,
             "--agent",
-            "--skip-setup",
         ]
     )
 
