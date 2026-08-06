@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Protocol
 
 from core.config_profiles import (
@@ -19,6 +20,7 @@ from core.credentials import (
     CLOUD_PROFILE_PROVIDERS,
     delete_profile_api_key,
     load_profile_api_key,
+    save_profile_api_key,
     validate_api_key,
 )
 
@@ -83,12 +85,17 @@ def _show_active(console: Any, profile: ConfigProfile) -> None:
 
 def _activate(
     profile_id: str,
+    working: ProfileStore,
     store: ProfileStore,
     settings: SessionSettingsLike,
     console: Any,
 ) -> None:
-    profile = set_active_profile(store, profile_id)
-    save_profile_store(store)
+    profile = set_active_profile(working, profile_id)
+    save_profile_store(working)
+    store.version = working.version
+    store.active_profile = working.active_profile
+    store.profiles = dict(working.profiles)
+    store.recent_projects = list(working.recent_projects)
     _apply_profile(settings, profile, load_profile_api_key(profile_id))
     _show_active(console, profile)
 
@@ -117,7 +124,11 @@ def handle_config_command(
         if value not in store.profiles:
             console.error(f"Неизвестный профиль: {value}")
             return client
-        _activate(value, store, settings, console)
+        try:
+            _activate(value, deepcopy(store), store, settings, console)
+        except Exception as exc:
+            console.error(str(exc))
+            return client
         return None
 
     action = console.choose("Конфигурация", ACTIONS, default=ACTIONS[0])
@@ -126,7 +137,8 @@ def handle_config_command(
 
     try:
         if action == "Выбрать профиль":
-            _activate(_choose_profile_id(console, store), store, settings, console)
+            profile_id = _choose_profile_id(console, store)
+            _activate(profile_id, deepcopy(store), store, settings, console)
             return None
 
         if action == "Создать профиль":
@@ -135,22 +147,36 @@ def handle_config_command(
                 existing_profile_ids=store.profiles,
             )
             profile_id = create_profile_id(profile.name, store.profiles)
-            store.profiles[profile_id] = profile
-            _activate(profile_id, store, settings, console)
+            working = deepcopy(store)
+            working.profiles[profile_id] = profile
+            try:
+                _activate(profile_id, working, store, settings, console)
+            except Exception:
+                delete_profile_api_key(profile_id)
+                raise
             return None
 
         profile_id = _choose_profile_id(console, store)
         if action == "Изменить профиль":
             previous = store.profiles[profile_id]
+            previous_key = load_profile_api_key(profile_id)
             profile = create_profile_interactively(
                 console,
                 previous,
                 profile_id=profile_id,
             )
-            store.profiles[profile_id] = profile
+            working = deepcopy(store)
+            working.profiles[profile_id] = profile
+            try:
+                _activate(profile_id, working, store, settings, console)
+            except Exception:
+                if previous.provider in CLOUD_PROFILE_PROVIDERS and previous_key:
+                    save_profile_api_key(profile_id, previous.provider, previous_key)
+                else:
+                    delete_profile_api_key(profile_id)
+                raise
             if profile.provider not in CLOUD_PROFILE_PROVIDERS:
                 delete_profile_api_key(profile_id)
-            _activate(profile_id, store, settings, console)
             return None
 
         if action == "Проверить профиль":
@@ -164,18 +190,25 @@ def handle_config_command(
                 profile.name,
             ):
                 return client
-            delete_profile(store, profile_id)
-            delete_profile_api_key(profile_id)
-            if not store.profiles:
+            working = deepcopy(store)
+            delete_profile(working, profile_id)
+            replacement_id: str | None = None
+            if not working.profiles:
                 replacement = create_profile_interactively(
                     console,
-                    existing_profile_ids=store.profiles,
+                    existing_profile_ids=working.profiles,
                 )
-                replacement_id = create_profile_id(replacement.name, store.profiles)
-                store.profiles[replacement_id] = replacement
-                store.active_profile = replacement_id
-            active_id = store.active_profile or next(iter(store.profiles))
-            _activate(active_id, store, settings, console)
+                replacement_id = create_profile_id(replacement.name, working.profiles)
+                working.profiles[replacement_id] = replacement
+                working.active_profile = replacement_id
+            active_id = working.active_profile or next(iter(working.profiles))
+            try:
+                _activate(active_id, working, store, settings, console)
+            except Exception:
+                if replacement_id is not None:
+                    delete_profile_api_key(replacement_id)
+                raise
+            delete_profile_api_key(profile_id)
             return None
     except (EOFError, KeyboardInterrupt):
         raise
