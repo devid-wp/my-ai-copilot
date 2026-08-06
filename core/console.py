@@ -133,18 +133,27 @@ class Console:
             )
         )
 
-    def quick_start(self, diagnostics: SessionDiagnostics) -> bool:
+    def quick_start(
+        self,
+        profile_name: str,
+        provider: str,
+        model: str,
+        mode: str,
+        permissions: str,
+        project_root: str,
+    ) -> bool:
         details = Table.grid(expand=True, padding=(0, 1))
         details.add_column(style=MUTED, width=13)
         details.add_column(style="bold white")
-        details.add_row("PROJECT", Path(diagnostics.project_root).name)
-        details.add_row("PROVIDER", diagnostics.provider.upper())
-        details.add_row("MODEL", diagnostics.model)
+        details.add_row("PROFILE", profile_name)
+        details.add_row("PROJECT", Path(project_root).name)
+        details.add_row("PROVIDER", provider.upper())
+        details.add_row("MODEL", model)
         details.add_row(
             "MODE",
-            Text(diagnostics.mode.upper(), style=PURPLE if diagnostics.mode == "agent" else CYAN),
+            Text(mode.upper(), style=PURPLE if mode == "agent" else CYAN),
         )
-        details.add_row("PERMISSIONS", diagnostics.permissions)
+        details.add_row("PERMISSIONS", permissions)
         details.add_row("", "")
         details.add_row("ENTER", "продолжить")
         details.add_row("C", "изменить настройки")

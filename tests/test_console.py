@@ -24,6 +24,30 @@ def test_header_contains_session_details(monkeypatch):
     assert "C:/project" in rendered
 
 
+def test_quick_start_shows_active_profile(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+    stream = io.StringIO()
+    console = Console()
+    console.output = RichConsole(file=stream, force_terminal=False, width=100)
+
+    assert console.quick_start(
+        "OpenAI Work",
+        "openai",
+        "gpt-5.6",
+        "chat",
+        "ask",
+        str(tmp_path),
+    ) is True
+
+    rendered = stream.getvalue()
+    assert "PROFILE" in rendered
+    assert "OpenAI Work" in rendered
+    assert "OPENAI" in rendered
+    assert "gpt-5.6" in rendered
+
+
 def test_regular_prompt_disables_password_mode_after_secret(monkeypatch):
     class RecordingSession:
         def __init__(self):

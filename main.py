@@ -643,6 +643,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     console = Console(local_only=args.local_only)
+    created_on_startup = False
     try:
         profile_store = load_profile_store()
     except ValueError as exc:
@@ -650,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if not profile_store.profiles:
+        created_on_startup = True
         try:
             created_profile = create_profile_interactively(console)
             profile_id = create_profile_id(created_profile.name, profile_store.profiles)
@@ -707,6 +709,35 @@ def main(argv: list[str] | None = None) -> int:
     settings.project_root = project_root
     settings.local_only = args.local_only
     session = AgentMemory(str(Path(project_root) / "logs" / "session.json"), args.user)
+    if (
+        not created_on_startup
+        and not args.oneshot
+        and not args.skip_setup
+        and not console.quick_start(
+            active_profile.name,
+            settings.provider,
+            settings.display_model,
+            settings.mode,
+            settings.permissions,
+            settings.project_root,
+        )
+    ):
+        handle_config_command(
+            "",
+            profile_store,
+            settings,
+            console,
+            None,
+        )
+        active_after_config = get_active_profile(profile_store)
+        if active_after_config is not None:
+            runtime_profile = active_after_config
+        if settings.project_root != project_root:
+            project_root = settings.project_root
+            session = AgentMemory(
+                str(Path(project_root) / "logs" / "session.json"),
+                args.user,
+            )
     if settings.agent and not verify_tool_compatibility(settings, console):
         return 2
     client = None

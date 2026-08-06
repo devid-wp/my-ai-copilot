@@ -89,3 +89,33 @@ def test_cli_overrides_do_not_rewrite_active_profile(tmp_path, monkeypatch):
     assert result == 0
     assert store.profiles["work"] is active
     assert clients == [("nvidia", "automation-model", "automation-key")]
+
+
+def test_repeat_interactive_launch_shows_active_profile_quick_start(tmp_path, monkeypatch):
+    active = profile(tmp_path)
+    store = ProfileStore(active_profile="work", profiles={"work": active})
+    shown = []
+
+    class RepeatConsole(StartupConsole):
+        def quick_start(self, *args):
+            shown.append(args)
+            return True
+
+        def prompt(self):
+            return "exit"
+
+    monkeypatch.setattr("main.Console", RepeatConsole)
+    monkeypatch.setattr("main.load_profile_store", lambda: store)
+    monkeypatch.setattr("main.load_profile_api_key", lambda _profile_id: "profile-key")
+
+    assert main([]) == 0
+    assert shown == [
+        (
+            "OpenAI work",
+            "openai",
+            "gpt-5.6",
+            "chat",
+            "ask",
+            str(tmp_path),
+        )
+    ]
