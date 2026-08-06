@@ -84,8 +84,7 @@ def test_permissions_command_changes_session_policy():
     assert settings.auto_approve is True
 
 
-def test_project_command_changes_working_root_and_resets_client(tmp_path, monkeypatch):
-    monkeypatch.setattr("main.save_preferences", lambda _preferences: None)
+def test_project_command_changes_only_session_root_and_resets_client(tmp_path):
     settings = SessionSettings(project_root="C:/old-project")
 
     client, should_exit = handle_slash(

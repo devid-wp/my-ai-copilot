@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import sys
-from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
@@ -45,7 +44,6 @@ from core.diagnostics import SessionDiagnostics
 from core.doctor import collect_doctor_checks
 from core.local_runtime import LOCAL_MODEL_ID, local_server_online
 from core.memory import AgentMemory
-from core.preferences import load_preferences, save_preferences
 from core.prompts import SYSTEM_PROMPT_TEMPLATE
 from core.provider_runtime import explain_provider_error, provider_name
 from core.tool_compatibility import ToolCompatibility, probe_cloud_tool_support
@@ -334,10 +332,6 @@ def handle_slash(
             console.error(f"Папка не найдена: {target}")
             return client, False
         settings.project_root = str(target)
-        preferences = load_preferences()
-        preferences.remember_project(settings.project_root)
-        with suppress(OSError):
-            save_preferences(preferences)
         console.success(f"Рабочая папка: {target}")
         return None, False
     if command == "mode":
