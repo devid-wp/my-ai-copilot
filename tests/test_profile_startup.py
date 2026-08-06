@@ -119,3 +119,25 @@ def test_repeat_interactive_launch_shows_active_profile_quick_start(tmp_path, mo
             str(tmp_path),
         )
     ]
+
+
+def test_repeat_agent_launch_does_not_probe_provider(tmp_path, monkeypatch):
+    active = profile(tmp_path, mode="agent")
+    store = ProfileStore(active_profile="work", profiles={"work": active})
+
+    class AgentConsole(StartupConsole):
+        def quick_start(self, *_args):
+            return True
+
+        def prompt(self):
+            return "exit"
+
+    monkeypatch.setattr("main.Console", AgentConsole)
+    monkeypatch.setattr("main.load_profile_store", lambda: store)
+    monkeypatch.setattr("main.load_profile_api_key", lambda _profile_id: "profile-key")
+    monkeypatch.setattr(
+        "main.verify_tool_compatibility",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unexpected provider probe")),
+    )
+
+    assert main([]) == 0

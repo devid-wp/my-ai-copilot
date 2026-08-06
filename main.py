@@ -738,8 +738,6 @@ def main(argv: list[str] | None = None) -> int:
                 str(Path(project_root) / "logs" / "session.json"),
                 args.user,
             )
-    if settings.agent and not verify_tool_compatibility(settings, console):
-        return 2
     client = None
     approved_external_paths: set[str] = set()
     console.header(settings.provider, settings.display_model, project_root, settings.agent)
